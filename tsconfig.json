@@ -3,5 +3,11 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  "compilerOptions": {
+    "baseUrl": ".", // tsconfig.app.json と同じ値を設定
+    "paths": {
+      "@/*": ["./src/*"] // tsconfig.app.json と同じ値を設定
+    }
+  }
 }
