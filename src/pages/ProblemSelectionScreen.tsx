@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom"; // useNavigateをインポート
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -11,83 +11,65 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Book, BookOpen } from "lucide-react";
+import {
+  BOOK_SOURCE_OPTIONS,
+  PROBLEM_COUNT_OPTIONS,
+  TIME_LIMIT_OPTIONS,
+  DEFAULT_BOOK_SOURCE,
+  DEFAULT_PROBLEM_COUNT,
+  DEFAULT_TIME_LIMIT,
+} from "@/constants/quizSettings";
 
 const ProblemSelectionScreen = () => {
-  const [bookSource, setBookSource] = useState("readableCode");
-  const [problemCount, setProblemCount] = useState(10);
-  // timeLimitを1問あたりの時間(秒)として扱う
-  const [timeLimit, settimeLimit] = useState(60);
-  const navigate = useNavigate(); // useNavigateフックを使用
+  const [bookSource, setBookSource] = useState<string>(DEFAULT_BOOK_SOURCE);
+  const [problemCount, setProblemCount] = useState<number>(
+    DEFAULT_PROBLEM_COUNT
+  );
+  const [timeLimit, setTimeLimit] = useState<number>(DEFAULT_TIME_LIMIT);
+  const navigate = useNavigate();
 
   const handleStartQuiz = () => {
-    console.log("Starting quiz with settings:", {
-      bookSource,
-      problemCount,
-      timeLimit,
-    });
-    // /quiz ルートに遷移し、選択した設定を state で渡す
-    navigate("/quiz", {
-      state: {
-        quizSettings: {
-          bookSource,
-          problemCount,
-          timeLimit,
-        },
-      },
-    });
+    const queryParams = new URLSearchParams({
+      bookSource: bookSource,
+      count: problemCount.toString(),
+      timeLimit: timeLimit.toString(),
+    }).toString();
+    navigate(`/quiz?${queryParams}`);
   };
 
+  // --- レンダリング ---
   return (
-    <div className="container mx-auto max-w-2xl p-4">
-      <Card>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <Card className="w-full max-w-2xl shadow-lg">
         <CardHeader>
-          <CardTitle className="text-2xl">問題選択</CardTitle>
+          <CardTitle className="text-2xl text-center">問題選択</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Book Source Selection */}
+          {/* 出題範囲選択 */}
           <div className="mb-6">
             <h2 className="text-lg font-semibold mb-4">出題範囲選択</h2>
             <RadioGroup
               value={bookSource}
-              onValueChange={setBookSource}
-              className="grid grid-cols-3 gap-4"
+              onValueChange={setBookSource} // 直接 setter を渡す
+              className="grid grid-cols-1 sm:grid-cols-3 gap-4"
             >
-              {[
-                {
-                  value: "readableCode",
-                  label: "リーダブルコード",
-                  icon: <Book className="mb-2" size={32} />,
-                },
-                {
-                  value: "principles",
-                  label: "プリンシプルオブプログラミング",
-                  icon: <BookOpen className="mb-2" size={32} />,
-                },
-                {
-                  value: "both",
-                  label: "両方",
-                  icon: (
-                    <div className="flex">
-                      <Book className="mb-2 mr-1" size={24} />
-                      <BookOpen className="mb-2" size={24} />
-                    </div>
-                  ),
-                },
-              ].map(({ value, label, icon }) => (
+              {/* 定義した配列を map で展開 */}
+              {BOOK_SOURCE_OPTIONS.map(({ value, label, icon }) => (
                 <div key={value} className="w-full">
                   <RadioGroupItem
                     value={value}
                     id={value}
-                    className="peer sr-only"
+                    className="peer sr-only" // ラジオボタン本体は非表示
                   />
                   <Label
-                    htmlFor={value}
-                    className={`flex flex-col items-center justify-between rounded-md border-2 p-4 h-full w-full text-center
-                      hover:bg-blue-50 hover:border-blue-300
+                    htmlFor={value} // Label と RadioGroupItem を紐付け
+                    // ラベルにスタイルを適用し、クリック可能な領域を作成
+                    className={`flex flex-col items-center justify-between rounded-md border-2 p-4 h-full w-full text-center cursor-pointer transition-colors duration-200 ease-in-out
+                      hover:bg-sky-50 hover:border-sky-300
                       ${
+                        // 選択状態に応じてスタイルを変更
                         bookSource === value
-                          ? "border-blue-500 bg-blue-100 text-blue-800"
+                          ? "border-sky-500 bg-sky-100 text-sky-800"
                           : "border-gray-200 bg-white text-gray-700"
                       }`}
                   >
@@ -101,18 +83,20 @@ const ProblemSelectionScreen = () => {
             </RadioGroup>
           </div>
 
-          {/* Problem Count Selection */}
+          {/* 問題数選択 */}
           <div className="mb-6">
             <h2 className="text-lg font-semibold mb-4">問題数選択</h2>
             <Select
-              value={problemCount.toString()}
-              onValueChange={(value) => setProblemCount(parseInt(value))}
+              value={problemCount.toString()} // Select の value は文字列
+              // 文字列で受け取り数値に変換して state を更新
+              onValueChange={(value) => setProblemCount(parseInt(value, 10))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="問題数を選択" />
               </SelectTrigger>
               <SelectContent>
-                {[5, 10, 15, 20, 25, 30].map((count) => (
+                {/* 定義した配列を map で展開 */}
+                {PROBLEM_COUNT_OPTIONS.map((count) => (
                   <SelectItem key={count} value={count.toString()}>
                     {count}問
                   </SelectItem>
@@ -121,18 +105,19 @@ const ProblemSelectionScreen = () => {
             </Select>
           </div>
 
-          {/* Time Limit Selection (1問あたり) */}
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4">1問あたりの時間</h2>
+          {/* 1問あたりの時間選択 */}
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4">1問あたりの解答時間</h2>
             <Select
               value={timeLimit.toString()}
-              onValueChange={(value) => settimeLimit(parseInt(value))}
+              onValueChange={(value) => setTimeLimit(parseInt(value, 10))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="1問あたりの時間" />
               </SelectTrigger>
               <SelectContent>
-                {[30, 45, 60, 75, 90].map((seconds) => (
+                {/* 定義した配列を map で展開 */}
+                {TIME_LIMIT_OPTIONS.map((seconds) => (
                   <SelectItem key={seconds} value={seconds.toString()}>
                     {seconds}秒
                   </SelectItem>
@@ -141,9 +126,9 @@ const ProblemSelectionScreen = () => {
             </Select>
           </div>
 
-          {/* Start Button */}
+          {/* 開始ボタン */}
           <Button
-            className="w-full bg-blue-600 hover:bg-blue-700"
+            className="w-full bg-sky-600 hover:bg-sky-700 text-lg py-3"
             onClick={handleStartQuiz}
           >
             開始

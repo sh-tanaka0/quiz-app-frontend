@@ -1,395 +1,318 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock } from "lucide-react";
+import { Clock, AlertTriangle } from "lucide-react";
+import { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz";
+import { fetchQuizQuestions, submitQuizAnswers } from "@/services/api";
+import { useTimer } from "@/hooks/useTimer";
+import ProblemItem from "@/components/quiz/ProblemItem";
+import NotificationToast from "@/components/quiz/NotificationToast";
+import { mockQuizData } from "@/mocks/mockQuizData"; // モックデータを使用する場合
 
-interface Problem {
-  id: number;
-  text: string;
-  choices: { label: string; text: string }[];
-  correctAnswer?: string;
-  category?: string;
-  explanation?: string;
-}
+// --- モック設定 ---
+const USE_MOCK_DATA = true; // バックエンド実装後に false にする
 
-// モックデータ (本来はAPIや外部ファイルから取得)
-const allMockProblems: Problem[] = [
-  {
-    id: 1,
-    category: "リファクタリング",
-    text: "コードの重複を削減するためのリファクタリング手法として最も適切なものはどれですか？",
-    choices: [
-      { label: "A", text: "コピー&ペーストを多用する" },
-      { label: "B", text: "共通の処理を関数やメソッドに抽出する" },
-      {
-        label: "C",
-        text: "コードの長さを気にせず、読みやすさより機能性を重視する",
-      },
-      { label: "D", text: "エラーが発生したら、そのまま無視する" },
-    ],
-    correctAnswer: "B",
-    explanation:
-      "共通の処理を関数やメソッドに抽出することで、コードの重複をなくし、保守性や可読性を向上させることができます。",
-  },
-  {
-    id: 2,
-    category: "エラーハンドリング",
-    text: "JavaScriptでのエラーハンドリングについて、最も適切な方法はどれですか？",
-    choices: [
-      { label: "A", text: "エラーを常に無視する" },
-      { label: "B", text: "コンソールにエラーメッセージを出力するだけ" },
-      {
-        label: "C",
-        text: "ユーザーに技術的な詳細なエラーメッセージを表示する",
-      },
-      {
-        label: "D",
-        text: "エラーをキャッチし、ユーザーフレンドリーなメッセージを表示する",
-      },
-    ],
-    correctAnswer: "D",
-    explanation:
-      "try...catch構文などを用いてエラーを適切に捕捉し、ユーザーに分かりやすい形で通知または代替処理を行うことが重要です。",
-  },
-  {
-    id: 3,
-    category: "オブジェクト指向",
-    text: "オブジェクト指向プログラミングの依存性の逆転 (Dependency Inversion) について正しい説明はどれですか？",
-    choices: [
-      { label: "A", text: "下位モジュールに高レベルモジュールを依存させる" },
-      {
-        label: "B",
-        text: "具体的な実装よりも抽象化 (インターフェース) に依存させる",
-      },
-      { label: "C", text: "モジュール間の依存関係を完全になくす" },
-      { label: "D", text: "常に具体的な実装に依存する" },
-    ],
-    correctAnswer: "B",
-    explanation:
-      "依存性の逆転原則は、上位モジュールも下位モジュールも具体的な実装ではなく、抽象（インターフェースや抽象クラス）に依存すべきであるという原則です。",
-  },
-  {
-    id: 4,
-    category: "コード可読性",
-    text: "変数名を明確にするためには、どのような命名規則が推奨されますか？",
-    choices: [
-      { label: "A", text: "できるだけ短い名前を使う" },
-      { label: "B", text: "意味が明確に伝わる具体的な名前を使う" },
-      { label: "C", text: "型情報を変数名に含める（ハンガリアン記法）" },
-      { label: "D", text: "全て小文字でアンダースコア区切りにする" },
-    ],
-    correctAnswer: "B",
-    explanation:
-      "変数の目的や内容が一目でわかるような、具体的で意味のある名前を選ぶことが、コードの可読性を高める上で非常に重要です。",
-  },
-  {
-    id: 5,
-    category: "変数命名",
-    text: "一時的に使用するループカウンタ変数として、一般的に使われる名前はどれですか？",
-    choices: [
-      { label: "A", text: "counterValue" },
-      { label: "B", text: "loopIndexNumber" },
-      { label: "C", text: "i, j, k" },
-      { label: "D", text: "temp" },
-    ],
-    correctAnswer: "C",
-    explanation:
-      "短いスコープで一時的に使われるループカウンタ変数には、慣習的に `i`, `j`, `k` などが使われます。ただし、スコープが広がる場合はより具体的な名前が推奨されます。",
-  },
-];
-
+// --- コンポーネント定義 ---
 const AnswerInputScreen = () => {
-  const location = useLocation();
+  // --- Hooks ---
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { quizSettings } = location.state || {};
 
-  // 設定がない場合や不正な場合はデフォルト値を使う
-  const timeLimit = quizSettings?.timeLimit ?? 60; // デフォルト60秒
-  const problemCount = quizSettings?.problemCount ?? 10; // デフォルト10問
-  const bookSource = quizSettings?.bookSource ?? "readableCode"; // デフォルト
-
-  // 問題リストの準備
+  // --- State ---
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentProblems, setCurrentProblems] = useState<Problem[]>([]);
+  const [selectedAnswers, setSelectedAnswers] = useState<{
+    [key: string]: string;
+  }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // --- 初期設定値 ---
+  const timeLimitPerQuestion = parseInt(
+    searchParams.get("timeLimit") || "60",
+    10
+  );
+  const problemCount = parseInt(searchParams.get("count") || "10", 10);
+  const bookSource = searchParams.get("bookSource") || "readableCode"; // デフォルト値を設定
+  const totalTime = timeLimitPerQuestion * problemCount;
+
+  // --- Ref ---
+  // State の最新値を useCallback 内で参照するために Ref を使用
+  const selectedAnswersRef = useRef(selectedAnswers);
+  const isSubmittingRef = useRef(isSubmitting);
+  const currentProblemsRef = useRef(currentProblems); // currentProblems 用 Ref
+
+  // --- Ref 更新 Effect ---
+  useEffect(() => {
+    selectedAnswersRef.current = selectedAnswers;
+  }, [selectedAnswers]);
 
   useEffect(() => {
-    // 指定された数だけ問題を取得
-    const selected = allMockProblems.slice(0, problemCount);
-    setCurrentProblems(selected);
-  }, [problemCount, bookSource]);
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
 
-  const [selectedAnswers, setSelectedAnswers] = useState<{
-    [key: number]: string;
-  }>({});
+  useEffect(() => {
+    currentProblemsRef.current = currentProblems;
+  }, [currentProblems]); // currentProblems が更新されたら Ref も更新
 
-  // 総制限時間を計算（秒）
-  const totalTime = timeLimit * problemCount;
-  const [timeRemaining, setTimeRemaining] = useState(totalTime);
+  // --- 問題取得 Effect ---
+  useEffect(() => {
+    const loadProblems = async () => {
+      setIsLoading(true);
+      setError(null);
+      // currentProblems をリセット（再取得時に前の問題が残らないように）
+      setCurrentProblems([]);
+      // selectedAnswers もリセット
+      setSelectedAnswers({});
 
-  // 通知状態の管理
-  const [notification, setNotification] = useState<{
-    show: boolean;
-    message: string;
-    level: "normal" | "notice" | "warning" | "critical";
-  }>({
-    show: false,
-    message: "",
-    level: "normal",
-  });
-
-  // 前回の警告レベルを記録するためのref
-  const lastWarningLevelRef = useRef<string>("normal");
-
-  // --- タイマーと通知ロジック ---
-  // 時間閾値計算をメモ化
-  const getTimeThresholds = useCallback(() => {
-    const totalMinutes = Math.ceil(totalTime / 60);
-    return {
-      fifty: Math.ceil(totalMinutes * 0.5) * 60,
-      thirty: Math.ceil(totalMinutes * 0.3) * 60,
-      ten: Math.max(60, Math.ceil(totalMinutes * 0.1) * 60),
-    };
-  }, [totalTime]);
-
-  const warningThresholds = getTimeThresholds();
-
-  // 警告レベル判定関数をメモ化
-  const getWarningLevel = useCallback(
-    (remainingTime: number) => {
-      if (remainingTime <= 0) return "critical"; // 時間切れも critical
-      if (remainingTime <= warningThresholds.ten) return "critical";
-      if (remainingTime <= warningThresholds.thirty) return "warning";
-      if (remainingTime <= warningThresholds.fifty) return "notice";
-      return "normal";
-    },
-    [warningThresholds]
-  );
-
-  // タイマーの色決定関数をメモ化
-  const getTimerColor = useCallback((warningLevel: string) => {
-    switch (warningLevel) {
-      case "critical":
-        return "text-red-600";
-      case "warning":
-        return "text-orange-500";
-      case "notice":
-        return "text-yellow-500";
-      default:
-        return "text-gray-700";
-    }
-  }, []);
-
-  // 時間フォーマットをメモ化
-  const formatTime = useCallback((seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
-      .toString()
-      .padStart(2, "0")}`;
-  }, []);
-
-  // 通知表示関数をメモ化
-  const showNotification = useCallback(
-    (message: string, level: "normal" | "notice" | "warning" | "critical") => {
-      setNotification({ show: true, message, level });
-      setTimeout(() => {
-        setNotification((prev) => ({ ...prev, show: false }));
-      }, 5000);
-    },
-    []
-  );
-
-  // 特定時間の通知メッセージを生成する関数をメモ化
-  const getTimeLevelMessage = useCallback(
-    (warningLevel: string, remainingMinutes: number) => {
-      switch (warningLevel) {
-        case "notice":
-          return `残り時間が半分（約${remainingMinutes}分）になりました`;
-        case "warning":
-          return `残り時間が30%（約${remainingMinutes}分）を切りました`;
-        case "critical":
-          return `残り時間が10%（約${remainingMinutes}分）を切りました！急いでください`;
-        default:
-          return "";
-      }
-    },
-    []
-  );
-
-  // 解答提出処理
-  const handleSubmit = useCallback(
-    (isTimeUp = false) => {
-      // 時間切れでない場合のみ確認ダイアログを表示
-      if (!isTimeUp) {
-        const unansweredProblems = currentProblems.filter(
-          (p) => !selectedAnswers[p.id]
-        );
-        if (unansweredProblems.length > 0) {
-          const confirmSubmit = window.confirm(
-            "未解答の問題がありますが提出しますか？"
+      if (USE_MOCK_DATA) {
+        console.log("Loading problems using mock data...");
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate API delay
+          setSessionId(mockQuizData.sessionId);
+          setCurrentProblems(mockQuizData.questions); // State を更新 -> Ref 更新 Effect が実行される
+          console.log("Mock problems loaded:", mockQuizData.questions);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "モック問題読込エラー");
+          console.error("Failed to load mock problems:", err);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        console.log("Fetching problems from API...");
+        try {
+          const data = await fetchQuizQuestions(
+            bookSource,
+            problemCount,
+            timeLimitPerQuestion
           );
-          if (!confirmSubmit) return;
+          setSessionId(data.sessionId);
+          setCurrentProblems(data.questions); // State を更新 -> Ref 更新 Effect が実行される
+          console.log("Problems fetched from API:", data.questions);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "問題読込エラー");
+          console.error("Failed to fetch problems:", err);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadProblems();
+    // 依存配列: クエリパラメータが変わったら問題を再取得
+  }, [bookSource, problemCount, timeLimitPerQuestion]); // これらの値は通常安定している
+
+  // --- 解答提出関数 (useCallback でメモ化し、Ref を使用) ---
+  const handleSubmitRevised = useCallback(
+    async (isTimeUp = false) => {
+      // Ref を使って最新の isSubmitting 状態を確認
+      if (isSubmittingRef.current && !isTimeUp) {
+        console.log("Submission already in progress. Aborting.");
+        return; // 時間切れ以外の多重送信を防止
+      }
+
+      setIsSubmitting(true); // State を更新 (isSubmittingRef も Effect で更新される)
+      setError(null);
+      const currentSelectedAnswers = selectedAnswersRef.current;
+      const problemsToSubmit = currentProblemsRef.current; // Ref から最新の問題リストを取得
+
+      // 問題リストが空の場合は何もしない（エラー防止）
+      if (!problemsToSubmit || problemsToSubmit.length === 0) {
+        console.warn("No problems to submit.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 未解答チェック (時間切れでない場合)
+      if (!isTimeUp) {
+        const unansweredCount = problemsToSubmit.filter(
+          (p) => !currentSelectedAnswers[p.id]
+        ).length;
+        if (unansweredCount > 0) {
+          const confirmSubmit = window.confirm(
+            `未解答の問題が ${unansweredCount} 問ありますが提出しますか？`
+          );
+          if (!confirmSubmit) {
+            setIsSubmitting(false); // 送信中止
+            return;
+          }
         }
       }
 
-      console.log("Submitting answers:", selectedAnswers);
+      console.log("Submitting answers...");
 
-      // 結果画面に渡すデータを作成
-      const results = currentProblems.map((problem) => ({
-        id: problem.id,
-        category: problem.category || "未分類",
-        question: problem.text,
-        choices: problem.choices,
-        userAnswer: selectedAnswers[problem.id] || null, // 未解答はnull
-        correctAnswer: problem.correctAnswer,
-        isCorrect: selectedAnswers[problem.id] === problem.correctAnswer,
-        explanation: problem.explanation || "解説はありません。",
-      }));
+      try {
+        if (USE_MOCK_DATA) {
+          console.log("Submitting answers using mock logic...");
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
 
-      // 結果画面に遷移し、結果データを state で渡す
-      navigate("/result", {
-        state: {
-          quizResults: results,
-          totalQuestions: currentProblems.length,
-          correctQuestions: results.filter((r) => r.isCorrect).length,
-        },
-      });
-    },
-    [currentProblems, navigate, selectedAnswers]
-  );
+          // モックの結果データを作成 (QuizResult[] 型)
+          const originalProblemsMap = new Map(
+            mockQuizData.questions.map((p) => [p.id, p])
+          );
+          const mockResultsData: AnswersApiResponse = {
+            results: problemsToSubmit.map((problem) => {
+              const originalProblemData = originalProblemsMap.get(problem.id);
+              const userAnswer = currentSelectedAnswers[problem.id] || null;
+              const isCorrect =
+                userAnswer === originalProblemData?.correctAnswer;
 
-  // タイマー処理
-  useEffect(() => {
-    // 設定が読み込まれてからタイマーを開始
-    if (totalTime > 0 && currentProblems.length > 0) {
-      setTimeRemaining(totalTime); // 初期時間設定
-      const timer = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (prev <= 1) {
-            // 0になる前にクリア
-            clearInterval(timer);
-            // 時間切れ時の処理 (例: 自動提出)
-            console.log("Time's up! Auto-submitting...");
-            handleSubmit(true); // 自動提出フラグを立てる
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [totalTime, currentProblems, handleSubmit]);
+              return {
+                questionId: problem.id,
+                category: originalProblemData?.category || "Unknown",
+                isCorrect: isCorrect,
+                userAnswer: userAnswer,
+                correctAnswer: originalProblemData?.correctAnswer || "N/A",
+                question: originalProblemData?.text || "問題文が見つかりません",
+                options: problem.options, // 画面表示に使った選択肢
+                explanation:
+                  originalProblemData?.explanation || "解説はありません。",
+              };
+            }),
+          };
 
-  // 警告レベルの変化と特定時間での通知処理（リファクタリング部分）
-  useEffect(() => {
-    // 時間切れの場合の処理
-    if (
-      timeRemaining <= 0 &&
-      lastWarningLevelRef.current !== "critical-timeout"
-    ) {
-      showNotification("時間切れです！解答を提出します。", "critical");
-      lastWarningLevelRef.current = "critical-timeout"; // 時間切れ通知済みフラグ
-      return; // 以降の通知は行わない
-    }
-    if (timeRemaining <= 0) return; // 時間切れ後の通知は不要
+          console.log("Mock submission successful. Navigating to results.");
+          navigate("/result", {
+            state: {
+              quizResults: mockResultsData.results,
+              totalQuestions: problemsToSubmit.length,
+              correctQuestions: mockResultsData.results.filter(
+                (r) => r.isCorrect
+              ).length,
+            },
+          });
+        } else {
+          // --- 実際のAPI送信 ---
+          const payload: AnswerPayload = {
+            // sessionId は state から取得 (通常、セッション中に変わらない想定)
+            sessionId: sessionId,
+            answers: problemsToSubmit.map((problem) => ({
+              questionId: problem.id,
+              answer: currentSelectedAnswers[problem.id] || null,
+            })),
+          };
 
-    const currentWarningLevel = getWarningLevel(timeRemaining);
-    const remainingMinutes = Math.ceil(timeRemaining / 60);
+          console.log("Submitting answers payload:", payload);
+          const resultsData = await submitQuizAnswers(payload);
+          console.log("API submission successful. Navigating to results.");
 
-    // 警告レベル変化時の通知処理
-    if (
-      currentWarningLevel !== lastWarningLevelRef.current &&
-      currentWarningLevel !== "normal"
-    ) {
-      const message = getTimeLevelMessage(
-        currentWarningLevel,
-        remainingMinutes
-      );
-      if (message) {
-        showNotification(message, currentWarningLevel);
-        lastWarningLevelRef.current = currentWarningLevel;
+          navigate("/result", {
+            state: {
+              quizResults: resultsData.results,
+              totalQuestions: problemsToSubmit.length,
+              correctQuestions: resultsData.results.filter((r) => r.isCorrect)
+                .length,
+            },
+          });
+        }
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : "解答の提出中にエラーが発生しました。";
+        setError(errorMsg);
+        console.error("Failed to submit answers:", err);
+      } finally {
+        setIsSubmitting(false); // 成功・失敗に関わらず State を更新
       }
-    }
-
-    // 特定の時間での通知 (重複を避けるためlastWarningLevelRefをチェック)
-    if (
-      timeRemaining === 300 &&
-      !["notice", "warning", "critical"].includes(lastWarningLevelRef.current)
-    ) {
-      showNotification("残り5分です", "notice");
-    } else if (
-      timeRemaining === 180 &&
-      !["warning", "critical"].includes(lastWarningLevelRef.current)
-    ) {
-      showNotification("残り3分です", "warning");
-    } else if (
-      timeRemaining === 60 &&
-      lastWarningLevelRef.current !== "critical"
-    ) {
-      showNotification("残り1分です！", "critical");
-    }
-
-    // 最初のレベル設定のため（normalからの変化を検知するため）
-    if (
-      lastWarningLevelRef.current === "normal" &&
-      currentWarningLevel !== "normal"
-    ) {
-      lastWarningLevelRef.current = currentWarningLevel; // 初回のレベル変化を記録
-    }
-  }, [timeRemaining, getWarningLevel, showNotification, getTimeLevelMessage]);
-
-  // 回答選択処理
-  const handleAnswerSelect = useCallback(
-    (problemId: number, choiceLabel: string) => {
-      // 時間切れの場合は選択不可にする
-      if (timeRemaining <= 0) return;
-      setSelectedAnswers((prev) => ({
-        ...prev,
-        [problemId]: choiceLabel,
-      }));
     },
-    [timeRemaining]
+    // ↓↓↓ 依存配列: currentProblems を削除し、安定した値のみにする
+    [navigate, sessionId]
+    // 注意: sessionId が安定しているか確認。もし fetchQuizQuestions のたびに変わるなら Ref化 が必要かも。
+    // selectedAnswersRef, currentProblemsRef, isSubmittingRef は Ref なので依存配列に含めない
   );
 
-  // 読み込み中または設定がない場合の表示
-  if (!quizSettings || currentProblems.length === 0) {
+  // --- 時間切れ処理用コールバック (useCallback でメモ化) ---
+  const handleTimeUp = useCallback(async () => {
+    console.log("Timer: Time's up! Triggering submission.");
+    // Ref を使って最新の isSubmitting 状態を確認してから実行
+    if (!isSubmittingRef.current) {
+      await handleSubmitRevised(true); // メモ化された handleSubmitRevised を呼び出す
+    } else {
+      console.log(
+        "Timer: Submission already in progress, skipping time-up submit."
+      );
+    }
+  }, [handleSubmitRevised]); // handleSubmitRevised の参照が変わらない限り再生成されない
+
+  // --- カスタムフック (useTimer) 呼び出し ---
+  const initialTimerValue = isLoading ? 0 : totalTime;
+  const {
+    timeRemaining,
+    warningLevel,
+    timerColorClass,
+    formattedTime,
+    notification,
+  } = useTimer(initialTimerValue, {
+    onTimeUp: handleTimeUp, // メモ化されたコールバックを渡す
+  });
+
+  // --- イベントハンドラ (回答選択) ---
+  const handleAnswerSelect = useCallback(
+    (problemId: string, choiceId: string) => {
+      // 時間切れ、または送信中は選択不可
+      if (timeRemaining <= 0 || isSubmittingRef.current) return; // Ref で判定
+      setSelectedAnswers((prev) => ({ ...prev, [problemId]: choiceId }));
+    },
+    [timeRemaining] // isSubmitting を Ref で管理しているので依存配列から削除
+  );
+
+  // --- 離脱防止 Effect ---
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Ref を使って最新の状態を確認
+      if (
+        timeRemaining > 0 &&
+        !isSubmittingRef.current && // Ref で判定
+        Object.keys(selectedAnswersRef.current).length > 0 // Ref で判定
+      ) {
+        event.preventDefault();
+        event.returnValue =
+          "解答中にページを離れると、進捗が失われる可能性があります。よろしいですか？";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [timeRemaining]); // isSubmitting, selectedAnswers を Ref で管理しているので依存配列から削除
+
+  // --- レンダリング ---
+  if (isLoading) {
     return (
       <div className="container mx-auto p-4 text-center">
-        設定を読み込み中...
+        問題を読み込んでいます...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="container mx-auto p-4 text-center text-red-600">
+        <AlertTriangle className="inline-block mr-2" />
+        エラー: {error}
       </div>
     );
   }
 
-  // 警告レベルとタイマー色
-  const warningLevel = getWarningLevel(timeRemaining);
-  const timerColorClass = getTimerColor(warningLevel);
-
   return (
-    <div className="container mx-auto max-w-4xl p-4 relative">
-      {/* スライドイン通知 */}
-      {notification.show && (
-        <div
-          className={`fixed top-4 right-4 z-50 flex items-center p-3 pr-4 rounded-lg shadow-lg border-l-4 bg-white
-            ${
-              notification.level === "critical"
-                ? "border-red-600"
-                : notification.level === "warning"
-                ? "border-orange-500"
-                : notification.level === "notice"
-                ? "border-yellow-500"
-                : "border-gray-300"
-            }
-            animate-slideInFromRight`}
-        >
-          <Clock size={20} className={getTimerColor(notification.level)} />
-          <span className="ml-2 font-medium">{notification.message}</span>
-        </div>
-      )}
+    <div className="container mx-auto max-w-5xl p-4">
+      {/* 通知コンポーネント呼び出し */}
+      <NotificationToast
+        message={notification.message}
+        level={notification.level}
+        colorClass={timerColorClass}
+        show={notification.show}
+      />
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between border-b">
-          <CardTitle className="text-xl">問題解答 ({problemCount}問)</CardTitle>
-          <div className="flex items-center space-x-2 p-2 rounded-lg">
+        <CardHeader className="flex flex-col sm:flex-row items-center justify-between border-b p-4">
+          <CardTitle className="text-xl mb-2 sm:mb-0">
+            問題解答 ({currentProblems.length}問)
+          </CardTitle>
+          {/* タイマー表示 */}
+          <div className="flex items-center space-x-2 p-2 rounded-lg bg-gray-50 border">
             <Clock size={20} className={timerColorClass} />
             <div>
               <span
@@ -399,74 +322,46 @@ const AnswerInputScreen = () => {
                     : ""
                 }`}
               >
-                {formatTime(timeRemaining)}
+                {formattedTime} {/* useTimerから取得 */}
               </span>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+
+        <CardContent className="p-4 md:p-6">
+          {/* 問題リストをProblemItemコンポーネントで表示 */}
           {currentProblems.map((problem, index) => (
-            <div
+            <ProblemItem
               key={problem.id}
-              className="mb-6 pb-4 border-b last:border-b-0"
-            >
-              <h2 className="text-lg font-semibold mb-4">
-                問題 {index + 1}: {problem.text}
-              </h2>
-              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {problem.choices.map((choice) => (
-                  <div
-                    key={choice.label}
-                    onClick={() => handleAnswerSelect(problem.id, choice.label)}
-                    className={`
-                      p-3 rounded border cursor-pointer transition-all duration-150 ease-in-out
-                      flex items-center space-x-3 group
-                      ${
-                        selectedAnswers[problem.id] === choice.label
-                          ? "bg-blue-100 border-blue-500 ring-2 ring-blue-300"
-                          : timeRemaining <= 0
-                          ? "bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed"
-                          : "bg-gray-50 hover:bg-gray-100 hover:border-gray-300 border-gray-200"
-                      }
-                    `}
-                    style={{ opacity: timeRemaining <= 0 ? 0.7 : 1 }}
-                  >
-                    <div
-                      className={`
-                        w-4 h-4 rounded-full border-2 flex items-center justify-center
-                        ${
-                          selectedAnswers[problem.id] === choice.label
-                            ? "border-blue-600 bg-blue-500"
-                            : "border-gray-400 group-hover:border-gray-500"
-                        }
-                        ${timeRemaining <= 0 ? "border-gray-300" : ""}
-                     `}
-                    >
-                      {selectedAnswers[problem.id] === choice.label && (
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <span className="font-medium mr-1">{choice.label}:</span>
-                      {choice.text}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+              problem={problem}
+              index={index}
+              selectedAnswer={selectedAnswers[problem.id] || null}
+              onAnswerSelect={handleAnswerSelect}
+              isTimeUp={timeRemaining <= 0}
+              isSubmitting={isSubmitting}
+            />
           ))}
 
+          {/* 解答ボタン */}
           <Button
-            className={`w-full mt-4 text-white ${
-              timeRemaining <= 0
+            className={`w-full mt-4 text-white text-lg py-3 ${
+              timeRemaining <= 0 || isSubmitting
                 ? "bg-gray-400 hover:bg-gray-400 cursor-not-allowed"
                 : "bg-green-600 hover:bg-green-700"
             }`}
-            onClick={() => handleSubmit()}
-            disabled={timeRemaining <= 0}
+            onClick={() => handleSubmitRevised()}
+            disabled={timeRemaining <= 0 || isSubmitting}
           >
-            解答する
+            {isSubmitting ? "提出中..." : "解答する"}
           </Button>
+
+          {/* エラー表示 */}
+          {error && (
+            <p className="mt-4 text-center text-red-600">
+              {" "}
+              <AlertTriangle className="inline-block mr-1" size={16} /> {error}{" "}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

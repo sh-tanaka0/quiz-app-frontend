@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+// Rechartsコンポーネントをインポート
 import {
   BarChart,
   Bar,
@@ -9,79 +10,98 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   LabelList,
+  Cell, // Cell を追加
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  CheckCircle,
+  XCircle,
+  Target,
+  Check,
+  Percent,
+  Home,
+} from "lucide-react"; // アイコンを追加
 
-// 結果データの型定義
-interface ResultData {
-  id: number;
+// --- 型定義 ---
+// 解答画面から渡されるデータの型 (APIレスポンス形式に準拠)
+// [source: API情報.pdf, p. 6], [source: フロント仕様まとめ.pdf, p. 22]
+interface ProblemOption {
+  id: string;
+  text: string;
+}
+interface QuizResult {
+  questionId: string; // id -> questionId (string)
   category: string;
-  question: string;
-  choices: { label: string; text: string }[];
-  userAnswer: string | null;
-  correctAnswer: string;
   isCorrect: boolean;
+  userAnswer: string | null;
+  correctAnswer: string | undefined;
+  displayOrder?: string[];
+  question: string;
+  options: ProblemOption[]; // choices -> options, label -> id
   explanation: string;
 }
 
-// カテゴリグループの型定義
-interface CategoryGroup {
-  total: number;
-  correct: number;
-  problems: ResultData[];
-}
-
-// カテゴリ集計データの型定義
+// カテゴリごとの集計データ型 (グラフ・フィルタ用)
 interface CategoryProgressData {
-  category: string;
-  successRate: number;
-  totalAttempts: number;
-  correctCount: number;
-  description: string;
+  category: string; // カテゴリ名
+  successRate: number; // 正解率 (%)
+  totalAttempts: number; // 解答数
+  correctCount: number; // 正解数
+  description: string; // カテゴリ説明
 }
 
-// 場所の状態の型定義
+// useLocation の state の型
 interface LocationState {
-  quizResults: ResultData[];
+  quizResults: QuizResult[]; // 型を QuizResult[] に修正
   totalQuestions: number;
   correctQuestions: number;
 }
 
-// カスタムツールチップの型定義
+// RechartsのカスタムツールチップのProps型
+// (payloadの型をより具体的に)
 interface CustomTooltipProps {
   active?: boolean;
-  payload?: Array<{
-    payload: CategoryProgressData;
-  }>;
+  payload?: Array<{ payload: CategoryProgressData }>; // payloadの型を修正
   label?: string;
 }
+
+// --- 解答結果表示画面コンポーネント ---
 const AnswerResultDashboard = () => {
+  // --- Hooks ---
   const location = useLocation();
   const navigate = useNavigate();
 
-  // location.stateをLocationState型として扱い、デフォルト値を設定
+  // --- State ---
+  // location.state から結果データを取得、型アサーションとデフォルト値を設定
   const {
     quizResults = [],
     totalQuestions = 0,
     correctQuestions = 0,
   } = (location.state as LocationState) || {};
 
-  const [openExplanationId, setOpenExplanationId] = useState<number | null>(
+  // 解説アコーディオンの開閉状態 (開いている問題の questionId を保持)
+  const [openExplanationId, setOpenExplanationId] = useState<string | null>(
     null
-  );
+  ); // 型を string | null に修正
+  // カテゴリフィルタで選択中のカテゴリ (null の場合は「全て」)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // グラフのバーホバー状態
+  const [hoveredBar, setHoveredBar] = useState<string | null>(null);
 
-  // カテゴリごとの正答率を計算 - 型アノテーションを追加
+  // --- データ加工 (useMemoで計算結果をメモ化) ---
+
+  /**
+   * [source: フロント仕様まとめ.pdf, p. 25]
+   */
   const categoryProgressData = useMemo<CategoryProgressData[]>(() => {
-    // カテゴリの詳細説明を返す関数
+    // カテゴリの説明 (固定)
     const getCategoryDescription = (category: string): string => {
-      // カテゴリごとの説明のマッピング
       const categoryDescriptions: Record<string, string> = {
         コード可読性:
           "コードの可読性は、他の開発者が理解しやすいコードを書くことを意味します。適切なコメント、一貫した命名規則、適切なインデントなどが重要です。",
-        変数命名:
-          "変数名は、その変数の目的や内容を明確に示す必要があります。意味のある名前を付けることで、コードの理解が容易になります。",
+        変数命名: "変数名は、その変数の目的や内容を明確に示す必要があります。",
         リファクタリング:
           "リファクタリングは、既存のコードの構造を変更し、可読性や保守性を向上させることです。重複コードの削減、メソッドの抽出、デザインパターンの適用などが含まれます。",
         エラーハンドリング:
@@ -89,34 +109,37 @@ const AnswerResultDashboard = () => {
         オブジェクト指向:
           "オブジェクト指向プログラミングは、データとそれに関連する操作を「オブジェクト」としてカプセル化するパラダイムです。継承、ポリモーフィズムなどの概念が中心となります。",
       };
-
       return (
         categoryDescriptions[category] ||
         "このカテゴリの詳細な説明はありません。"
       );
     };
 
-    // 結果データがない場合は空配列を返す
-    if (!quizResults || quizResults.length === 0) {
-      return [];
+    if (!quizResults || quizResults.length === 0) return [];
+
+    // カテゴリごとに問題を集計する型
+    interface CategoryGroup {
+      total: number;
+      correct: number;
     }
 
+    // カテゴリごとに正解数と総数を集計
     const categoryGroups = quizResults.reduce<Record<string, CategoryGroup>>(
-      (acc: Record<string, CategoryGroup>, problem: ResultData) => {
+      (acc, problem) => {
         const category = problem.category || "未分類";
         if (!acc[category]) {
-          acc[category] = { total: 0, correct: 0, problems: [] };
+          acc[category] = { total: 0, correct: 0 };
         }
         acc[category].total++;
         if (problem.isCorrect) {
           acc[category].correct++;
         }
-        acc[category].problems.push(problem);
         return acc;
       },
       {}
     );
 
+    // 集計結果をグラフ用のデータ形式に変換
     return Object.keys(categoryGroups).map((category) => ({
       category,
       successRate:
@@ -133,115 +156,165 @@ const AnswerResultDashboard = () => {
     }));
   }, [quizResults]);
 
-  // サマリーデータ
-  const summaryData = {
-    totalQuestions,
-    correctQuestions,
-    correctRate:
-      totalQuestions > 0
-        ? Math.round((correctQuestions / totalQuestions) * 100)
-        : 0,
-  };
+  /**
+   * 全体のサマリーデータ
+   * [source: フロント仕様まとめ.pdf, p. 22]
+   */
+  const summaryData = useMemo(
+    () => ({
+      totalQuestions,
+      correctQuestions,
+      correctRate:
+        totalQuestions > 0
+          ? Math.round((correctQuestions / totalQuestions) * 100)
+          : 0,
+    }),
+    [totalQuestions, correctQuestions]
+  );
 
-  // フィルタリングされた問題リスト
+  /**
+   * 選択されたカテゴリに基づいてフィルタリングされた問題リスト
+   * [source: フロント仕様まとめ.pdf, p. 27]
+   */
   const filteredProblems = useMemo(() => {
     if (!quizResults) return [];
+    // selectedCategory が null でなければカテゴリでフィルタリング
     return selectedCategory
       ? quizResults.filter(
           (problem) => (problem.category || "未分類") === selectedCategory
         )
-      : quizResults;
+      : quizResults; // null なら全件表示
   }, [selectedCategory, quizResults]);
 
-  // Tooltipのカスタムコンポーネント - 型を適切に定義
+  // --- カスタムコンポーネント ---
+
+  /**
+   * Rechartsグラフのカスタムツールチップ
+   * [source: フロント仕様まとめ.pdf, p. 25]
+   */
   const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload; // categoryProgressDataの要素
+      const data = payload[0].payload; // 表示中のバーに対応するデータ
       return (
         <div className="bg-white p-3 border border-gray-300 rounded shadow-lg max-w-xs text-sm">
-          <p className="font-bold text-base mb-1">{label}</p>
+          <p className="font-bold text-base mb-1">{label}</p> {/* カテゴリ名 */}
           <p className="mb-1">
             正答率: <span className="font-semibold">{data.successRate}%</span> (
             {data.correctCount}/{data.totalAttempts}問)
           </p>
-          <p className="text-gray-600 italic">{data.description}</p>
+          <p className="text-gray-600 italic">{data.description}</p>{" "}
+          {/* カテゴリ説明 */}
         </div>
       );
     }
     return null;
   };
 
-  // 問題がない場合の表示
+  // --- レンダリング ---
+
+  // 結果データがない場合の表示
   if (!quizResults || quizResults.length === 0) {
     return (
-      <div className="container mx-auto p-6 text-center">
-        <p className="text-xl text-gray-600 mb-4">
+      <div className="container mx-auto p-6 text-center flex flex-col items-center justify-center min-h-screen bg-gray-50">
+        <p className="text-xl text-gray-600 mb-6">
           結果データが見つかりません。
         </p>
-        <Button onClick={() => navigate("/")}>問題選択に戻る</Button>
+        <Button onClick={() => navigate("/")}>
+          <Home className="mr-2" size={18} />
+          問題選択に戻る
+        </Button>{" "}
+        {/* ボタンにアイコン追加 */}
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-5xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="p-4 md:p-6 border-b border-gray-200">
+    // 全体のコンテナ (背景色、最小高さ)
+    <div className="p-4 md:p-6 bg-gray-100 min-h-screen">
+      {/* メインカード (影付き、角丸) */}
+      <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-xl overflow-hidden">
+        {" "}
+        {/* 少し幅を広げる */}
+        {/* ヘッダー */}
+        <div className="p-5 md:p-6 border-b border-gray-200 bg-gradient-to-r from-white to-gray-50">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
             解答結果
           </h1>
         </div>
-
         {/* --- サマリーセクション --- */}
-        <div className="p-4 md:p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-700 mb-3">サマリー</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-            <div className="bg-white p-4 rounded-lg shadow">
-              <p className="text-sm text-gray-500 mb-1">総問題数</p>
-              <p className="text-2xl font-bold text-gray-800">
-                {summaryData.totalQuestions}
-              </p>
+        <div className="p-5 md:p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-700 mb-4">サマリー</h2>
+          {/* 改善: 各項目をアイコン付きカードで表示 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="flex items-center p-4 bg-blue-50 rounded-lg border border-blue-100 shadow-sm">
+              <div className="p-2 bg-blue-100 rounded-full mr-3">
+                <Target size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-blue-800 font-medium">総問題数</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {summaryData.totalQuestions}
+                </p>
+              </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <p className="text-sm text-gray-500 mb-1">正解数</p>
-              <p className="text-2xl font-bold text-green-600">
-                {summaryData.correctQuestions}
-              </p>
+            <div className="flex items-center p-4 bg-green-50 rounded-lg border border-green-100 shadow-sm">
+              <div className="p-2 bg-green-100 rounded-full mr-3">
+                <Check size={20} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-green-800 font-medium">正解数</p>
+                <p className="text-2xl font-bold text-green-900">
+                  {summaryData.correctQuestions}
+                </p>
+              </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <p className="text-sm text-gray-500 mb-1">正解率</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {summaryData.correctRate}%
-              </p>
+            <div className="flex items-center p-4 bg-indigo-50 rounded-lg border border-indigo-100 shadow-sm">
+              <div className="p-2 bg-indigo-100 rounded-full mr-3">
+                <Percent size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm text-indigo-800 font-medium">正解率</p>
+                <p className="text-2xl font-bold text-indigo-900">
+                  {summaryData.correctRate}%
+                </p>
+              </div>
             </div>
           </div>
         </div>
-
         {/* --- カテゴリ別正答率グラフ --- */}
-        <div className="p-4 md:p-6 border-b border-gray-200">
+        <div className="p-5 md:p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">
             カテゴリ別 正答率
           </h2>
-          <div className="mb-6 h-72 md:h-80">
+          {/* グラフコンテナ (高さ設定) */}
+          <div className="mb-6 h-80 md:h-96">
+            {" "}
+            {/* 高さを少し増やす */}
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={categoryProgressData}
-                margin={{ top: 20, right: 10, left: -10, bottom: 5 }}
+                margin={{
+                  top: 20,
+                  right: 10,
+                  left: -15,
+                  bottom: 55,
+                }} /* bottom margin 調整 */
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="#e0e0e0"
                   vertical={false}
                 />
+                {/* 改善: X軸ラベルの調整 */}
                 <XAxis
                   dataKey="category"
                   axisLine={{ stroke: "#d1d5db" }}
                   tickLine={false}
-                  tick={{ fontSize: 12, fill: "#4b5563" }}
-                  interval={0}
-                  angle={-30}
-                  textAnchor="end"
-                  height={50}
+                  tick={{ fontSize: 11, fill: "#4b5563" }} // フォントサイズ少し小さく
+                  interval={0} // 全てのラベルを表示
+                  angle={-45} // 角度変更
+                  textAnchor="end" // アンカー位置調整
+                  dy={15} // Y方向オフセット調整
                 />
                 <YAxis
                   axisLine={false}
@@ -249,18 +322,30 @@ const AnswerResultDashboard = () => {
                   domain={[0, 100]}
                   tickFormatter={(value) => `${value}%`}
                   tick={{ fontSize: 12, fill: "#6b7280" }}
-                  width={40}
+                  width={45} /* 幅調整 */
                 />
                 <Tooltip
                   content={<CustomTooltip />}
-                  cursor={{ fill: "rgba(239, 246, 255, 0.5)" }}
+                  cursor={{
+                    fill: "rgba(239, 246, 255, 0.6)",
+                  }} /* ホバー色少し濃く */
                 />
                 <Bar
                   dataKey="successRate"
                   radius={[4, 4, 0, 0]}
-                  maxBarSize={40}
-                  fill="#3b82f6"
+                  maxBarSize={50}
+                  onMouseEnter={(data) => setHoveredBar(data.category)} // ホバー状態設定
+                  onMouseLeave={() => setHoveredBar(null)}
                 >
+                  {/* 改善: ホバー時に色を変える */}
+                  {categoryProgressData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        hoveredBar === entry.category ? "#2563eb" : "#3b82f6"
+                      }
+                    />
+                  ))}
                   <LabelList
                     dataKey="successRate"
                     position="top"
@@ -275,135 +360,168 @@ const AnswerResultDashboard = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* カテゴリフィルタ */}
+          {/* --- カテゴリフィルタボタン --- */}
+          {/* [source: フロント仕様まとめ.pdf, p. 27] */}
           <div className="mb-4">
-            <h3 className="text-lg font-medium text-gray-600 mb-2">
+            <h3 className="text-lg font-medium text-gray-600 mb-3">
               フィルタ:
             </h3>
+            {/* 改善: ボタンデザイン調整 */}
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
+                size="sm" // サイズ small
+                variant={selectedCategory === null ? "default" : "outline"} // 選択状態でスタイル変更
                 onClick={() => setSelectedCategory(null)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 ${
+                className={`rounded-full ${
                   selectedCategory === null
-                    ? "bg-blue-600 text-white shadow"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 全て ({quizResults.length})
-              </button>
+              </Button>
               {categoryProgressData.map((categoryData) => (
-                <button
+                <Button
                   key={categoryData.category}
-                  onClick={() => setSelectedCategory(categoryData.category)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 ${
+                  size="sm"
+                  variant={
                     selectedCategory === categoryData.category
-                      ? "bg-blue-600 text-white shadow"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      ? "default"
+                      : "outline"
+                  }
+                  onClick={() => setSelectedCategory(categoryData.category)}
+                  className={`rounded-full ${
+                    selectedCategory === categoryData.category
+                      ? "bg-blue-600 hover:bg-blue-700"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
                   }`}
                 >
                   {categoryData.category} ({categoryData.totalAttempts})
-                </button>
+                </Button>
               ))}
             </div>
           </div>
         </div>
-
         {/* --- 問題別結果リスト --- */}
-        <div className="p-4 md:p-6">
+        {/* [source: フロント仕様まとめ.pdf, p. 22] */}
+        <div className="p-5 md:p-6">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">
             問題別 結果 {selectedCategory ? `(${selectedCategory})` : ""}
           </h2>
           {filteredProblems.length > 0 ? (
             <div className="space-y-4">
               {filteredProblems.map((problem, index) => (
+                // 改善: 正誤でボーダー色が変わるカード
                 <div
-                  key={problem.id}
-                  className={`rounded-lg border overflow-hidden ${
+                  key={problem.questionId} // id -> questionId
+                  className={`rounded-lg border-2 overflow-hidden transition-colors duration-200 ${
                     problem.isCorrect
-                      ? "border-green-200 bg-green-50/50"
-                      : "border-red-200 bg-red-50/50"
+                      ? "border-green-300 bg-green-50/50" // 正解時
+                      : "border-red-300 bg-red-50/50" // 不正解時
                   }`}
                 >
                   {/* 問題ヘッダー */}
                   <div className="p-4 border-b border-[inherit]">
+                    {" "}
+                    {/* ボーダー色を親に合わせる */}
                     <div className="flex justify-between items-start gap-2">
-                      <h4 className="font-semibold text-gray-800">
+                      <h4 className="font-semibold text-gray-800 flex items-center">
+                        {" "}
+                        {/* アイコンと並べるためにflex */}
+                        {/* 改善: 正誤アイコン表示 */}
+                        {problem.isCorrect ? (
+                          <CheckCircle
+                            size={18}
+                            className="text-green-600 mr-2 flex-shrink-0"
+                          />
+                        ) : (
+                          <XCircle
+                            size={18}
+                            className="text-red-600 mr-2 flex-shrink-0"
+                          />
+                        )}
                         問題 {index + 1}
-                        <span className="ml-2 text-xs font-normal text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        <span className="ml-2 text-xs font-normal text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
                           {problem.category || "未分類"}
                         </span>
                       </h4>
-                      <span
-                        className={`text-sm font-bold px-2 py-1 rounded-full ${
-                          problem.isCorrect
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {problem.isCorrect ? "正解" : "不正解"}
-                      </span>
+                      {/* 正解/不正解ラベルはアイコンにしたので削除 */}
                     </div>
-                    <p className="mt-2 text-gray-700">{problem.question}</p>
+                    <p className="mt-2 text-gray-700 pl-7">
+                      {problem.question}
+                    </p>{" "}
+                    {/* アイコン分インデント */}
                   </div>
 
                   {/* 選択肢表示 */}
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {problem.choices.map((choice) => (
-                      <div
-                        key={choice.label}
-                        className={`p-3 rounded border text-sm flex items-start space-x-2 ${
-                          problem.correctAnswer === choice.label
-                            ? "bg-green-100 border-green-300"
-                            : problem.userAnswer === choice.label
-                            ? "bg-red-100 border-red-300"
-                            : "bg-gray-50 border-gray-200"
-                        }`}
-                      >
-                        {/* アイコン表示 */}
-                        <div className="flex-shrink-0 w-5 h-5 mt-0.5">
-                          {problem.correctAnswer === choice.label && (
-                            <span className="text-green-600">✓</span>
-                          )}
-                          {problem.userAnswer === choice.label &&
-                            problem.userAnswer !== problem.correctAnswer && (
-                              <span className="text-red-600">✗</span>
+                    {/* 修正: options を参照, id を参照 */}
+                    {problem.options.map((option) => {
+                      const isCorrectAnswer =
+                        problem.correctAnswer === option.id;
+                      const isUserAnswer = problem.userAnswer === option.id;
+                      return (
+                        <div
+                          key={option.id}
+                          // 改善: 選択肢のスタイル調整
+                          className={`p-3 rounded border text-sm flex items-start space-x-2 ${
+                            isCorrectAnswer
+                              ? "bg-green-100 border-green-300 font-medium text-green-900" // 正解の選択肢
+                              : isUserAnswer
+                              ? "bg-red-100 border-red-300 text-red-900" // ユーザーが選んだ不正解の選択肢
+                              : "bg-white border-gray-200 text-gray-700" // その他
+                          }`}
+                        >
+                          {/* 改善: アイコン表示の調整 */}
+                          <div className="flex-shrink-0 w-5 h-5 mt-0.5 flex items-center justify-center">
+                            {isCorrectAnswer && (
+                              <Check size={16} className="text-green-700" />
                             )}
+                            {isUserAnswer && !isCorrectAnswer && (
+                              <XCircle size={16} className="text-red-700" />
+                            )}
+                          </div>
+                          {/* テキスト */}
+                          <div className="flex-1">
+                            <span className="font-semibold mr-1">
+                              {option.id}:
+                            </span>{" "}
+                            {/* id を表示 */}
+                            <span>{option.text}</span>
+                            {/* 改善: ユーザー解答表示をアイコンに統合したので削除 */}
+                          </div>
                         </div>
-                        {/* テキスト */}
-                        <div className="flex-1">
-                          <span className="font-medium mr-1">
-                            {choice.label}:
-                          </span>
-                          <span>{choice.text}</span>
-                          {problem.userAnswer === choice.label && (
-                            <span className="ml-2 text-xs font-semibold text-blue-600">
-                              (あなたの解答)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* アコーディオン形式の解説 */}
+                  {/* [source: フロント仕様まとめ.pdf, p. 30] */}
                   <div className="border-t border-[inherit]">
                     <button
                       onClick={() =>
                         setOpenExplanationId(
-                          openExplanationId === problem.id ? null : problem.id
+                          openExplanationId === problem.questionId
+                            ? null
+                            : problem.questionId
                         )
-                      }
-                      className="w-full flex justify-between items-center p-3 text-left text-sm text-blue-600 hover:bg-blue-50 focus:outline-none focus:bg-blue-100 transition-colors"
+                      } // id -> questionId
+                      // 改善: アコーディオンボタンのスタイル調整
+                      className="w-full flex justify-between items-center p-3 text-left text-sm text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:bg-indigo-100 transition-colors font-medium"
                     >
-                      <span className="font-medium">解説</span>
-                      {openExplanationId === problem.id ? (
-                        <ChevronUp size={16} />
+                      <span>解説を見る</span>
+                      {openExplanationId === problem.questionId ? (
+                        <ChevronUp size={18} />
                       ) : (
-                        <ChevronDown size={16} />
-                      )}
+                        <ChevronDown size={18} />
+                      )}{" "}
+                      {/* アイコンサイズ調整 */}
                     </button>
-                    {openExplanationId === problem.id && (
-                      <div className="px-4 pb-4 pt-2 text-sm text-gray-700 bg-white border-t border-blue-100">
+                    {/* 解説コンテンツ */}
+                    {openExplanationId === problem.questionId && (
+                      <div className="px-4 pb-4 pt-2 text-sm text-gray-800 bg-white border-t border-indigo-100">
+                        {" "}
+                        {/* 背景白に */}
                         <p>{problem.explanation}</p>
                       </div>
                     )}
@@ -412,20 +530,26 @@ const AnswerResultDashboard = () => {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-4">
+            // フィルタ結果がない場合
+            <p className="text-gray-500 text-center py-6">
               {selectedCategory
                 ? `「${selectedCategory}」カテゴリの問題はありません。`
                 : "表示する問題がありません。"}
             </p>
           )}
 
-          {/* 再挑戦ボタン */}
-          <div className="mt-8 text-center">
+          {/* TOPへ戻るボタン */}
+          {/* [source: フロント仕様まとめ.pdf, p. 32] */}
+          <div className="mt-8 text-center border-t pt-6 border-gray-200">
+            {" "}
+            {/* 区切り線追加 */}
             <Button
-              variant="outline"
-              onClick={() => navigate("/")}
-              className="border-blue-500 text-blue-600 hover:bg-blue-50"
+              variant="default" // 通常ボタンに変更
+              size="lg" // サイズ大きく
+              onClick={() => navigate("/")} // 問題選択画面へ
+              className="bg-blue-600 hover:bg-blue-700" // 色調整
             >
+              <Home className="mr-2" size={18} /> {/* アイコン追加 */}
               もう一度挑戦する
             </Button>
           </div>

@@ -2,8 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import ProblemSelectionScreen from "./pages/ProblemSelectionScreen";
 import AnswerInputScreen from "./pages/AnswerInputScreen";
 import AnswerResultDashboard from "./pages/AnswerResultDashboard";
-import "./index.css"; // Tailwind CSS / shadcn/ui のスタイルシートをインポート
-
+import "./index.css";
 function App() {
   return (
     <Router>
@@ -16,8 +15,6 @@ function App() {
 
         {/* 結果表示画面 */}
         <Route path="/result" element={<AnswerResultDashboard />} />
-
-        {/* 他のルートやNot Foundページなどもここに追加できます */}
       </Routes>
     </Router>
   );
