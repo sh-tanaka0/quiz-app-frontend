@@ -50,5 +50,35 @@ export interface AnswersApiResponse {
   // 他にもあれば追加
 }
 
+// useLocation の state の型
+export interface LocationState {
+  quizResults: QuizResult[]; // 型を QuizResult[] に修正
+  totalQuestions: number;
+  correctQuestions: number;
+}
+
+// カテゴリごとの集計データ型 (グラフ・フィルタ用)
+export interface CategoryProgressData {
+  category: string; // カテゴリ名
+  successRate: number; // 正解率 (%)
+  totalAttempts: number; // 解答数
+  correctCount: number; // 正解数
+  description: string; // カテゴリ説明
+}
+
+// RechartsのカスタムツールチップのProps型
+export interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: CategoryProgressData }>;
+  label?: string;
+}
+
+// サマリーセクションのProps型
+export interface SummaryData {
+  totalQuestions: number;
+  correctQuestions: number;
+  correctRate: number;
+}
+
 // 通知レベルの型
 export type NotificationLevel = "normal" | "notice" | "warning" | "critical";
