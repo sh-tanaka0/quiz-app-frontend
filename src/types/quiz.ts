@@ -4,9 +4,9 @@ export interface ProblemOption {
 }
 
 export interface Problem {
-  id: string;
+  questionId: string;
   category?: string;
-  text: string;
+  question: string;
   options: ProblemOption[];
   correctAnswer?: string;
   explanation?: string;

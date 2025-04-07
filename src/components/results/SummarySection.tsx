@@ -1,5 +1,3 @@
-// src/components/results/SummarySection.tsx
-import React from "react";
 import { Target, Check, Percent } from "lucide-react";
 import { SummaryData } from "@/types/quiz";
 

@@ -11,12 +11,12 @@ export interface BookSourceOption {
 
 export const BOOK_SOURCE_OPTIONS: BookSourceOption[] = [
   {
-    value: "readableCode",
+    value: "readable_code",
     label: "リーダブルコード",
     icon: <Book className="mb-2" size={32} />,
   },
   {
-    value: "principles",
+    value: "programming_principles",
     label: "プリンシプルオブプログラミング",
     icon: <BookOpen className="mb-2" size={32} />,
   },
@@ -35,6 +35,6 @@ export const BOOK_SOURCE_OPTIONS: BookSourceOption[] = [
 export const PROBLEM_COUNT_OPTIONS: number[] = [5, 10, 15, 20, 25, 30];
 export const TIME_LIMIT_OPTIONS: number[] = [30, 45, 60, 75, 90];
 
-export const DEFAULT_BOOK_SOURCE = "readableCode";
+export const DEFAULT_BOOK_SOURCE = "readable_code";
 export const DEFAULT_PROBLEM_COUNT = 10;
 export const DEFAULT_TIME_LIMIT = 60;

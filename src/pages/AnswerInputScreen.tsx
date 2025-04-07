@@ -11,7 +11,7 @@ import NotificationToast from "@/components/quiz/NotificationToast";
 import { mockQuizData } from "@/mocks/mockQuizData"; // モックデータを使用する場合
 
 // --- モック設定 ---
-const USE_MOCK_DATA = true; // バックエンド実装後に false にする
+const USE_MOCK_DATA = false; // バックエンド実装後に false にする
 
 // --- コンポーネント定義 ---
 const AnswerInputScreen = () => {
@@ -128,7 +128,7 @@ const AnswerInputScreen = () => {
       // 未解答チェック (時間切れでない場合)
       if (!isTimeUp) {
         const unansweredCount = problemsToSubmit.filter(
-          (p) => !currentSelectedAnswers[p.id]
+          (p) => !currentSelectedAnswers[p.questionId]
         ).length;
         if (unansweredCount > 0) {
           const confirmSubmit = window.confirm(
@@ -150,22 +150,26 @@ const AnswerInputScreen = () => {
 
           // モックの結果データを作成 (QuizResult[] 型)
           const originalProblemsMap = new Map(
-            mockQuizData.questions.map((p) => [p.id, p])
+            mockQuizData.questions.map((p) => [p.questionId, p])
           );
           const mockResultsData: AnswersApiResponse = {
             results: problemsToSubmit.map((problem) => {
-              const originalProblemData = originalProblemsMap.get(problem.id);
-              const userAnswer = currentSelectedAnswers[problem.id] || null;
+              const originalProblemData = originalProblemsMap.get(
+                problem.questionId
+              );
+              const userAnswer =
+                currentSelectedAnswers[problem.questionId] || null;
               const isCorrect =
                 userAnswer === originalProblemData?.correctAnswer;
 
               return {
-                questionId: problem.id,
+                questionId: problem.questionId,
                 category: originalProblemData?.category || "Unknown",
                 isCorrect: isCorrect,
                 userAnswer: userAnswer,
                 correctAnswer: originalProblemData?.correctAnswer || "N/A",
-                question: originalProblemData?.text || "問題文が見つかりません",
+                question:
+                  originalProblemData?.question || "問題文が見つかりません",
                 options: problem.options, // 画面表示に使った選択肢
                 explanation:
                   originalProblemData?.explanation || "解説はありません。",
@@ -189,8 +193,8 @@ const AnswerInputScreen = () => {
             // sessionId は state から取得 (通常、セッション中に変わらない想定)
             sessionId: sessionId,
             answers: problemsToSubmit.map((problem) => ({
-              questionId: problem.id,
-              answer: currentSelectedAnswers[problem.id] || null,
+              questionId: problem.questionId,
+              answer: currentSelectedAnswers[problem.questionId] || null,
             })),
           };
 
@@ -332,10 +336,10 @@ const AnswerInputScreen = () => {
           {/* 問題リストをProblemItemコンポーネントで表示 */}
           {currentProblems.map((problem, index) => (
             <ProblemItem
-              key={problem.id}
+              key={problem.questionId}
               problem={problem}
               index={index}
-              selectedAnswer={selectedAnswers[problem.id] || null}
+              selectedAnswer={selectedAnswers[problem.questionId] || null}
               onAnswerSelect={handleAnswerSelect}
               isTimeUp={timeRemaining <= 0}
               isSubmitting={isSubmitting}

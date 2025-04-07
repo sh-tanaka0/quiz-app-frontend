@@ -7,7 +7,7 @@ import {
 
 // Axiosインスタンスを作成 (ベースURLなどを設定すると便利)
 const apiClient = axios.create({
-  baseURL: "/api", // APIのベースパス (環境変数などから取得推奨)
+  baseURL: "http://localhost:8000", // APIのベースパス (環境変数などから取得推奨)
   timeout: 10000, // タイムアウト設定 (10秒)
 });
 

@@ -22,13 +22,13 @@ const ProblemItem: React.FC<ProblemItemProps> = ({
   return (
     <div className="mb-8 pb-6 border-b last:border-b-0">
       <h2 className="text-lg font-semibold mb-4 p-3 bg-gray-100 rounded-md">
-        問題 {index + 1}: {problem.text}
+        問題 {index + 1}: {problem.question}
       </h2>
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
         {problem.options.map((option) => (
           <div
             key={option.id}
-            onClick={() => onAnswerSelect(problem.id, option.id)}
+            onClick={() => onAnswerSelect(problem.questionId, option.id)}
             className={`
               p-3 rounded border cursor-pointer transition-all duration-150 ease-in-out
               flex items-center space-x-3 group
