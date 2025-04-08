@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useBlocker } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Clock, AlertTriangle } from "lucide-react";
@@ -8,6 +8,7 @@ import { fetchQuizQuestions, submitQuizAnswers } from "@/services/api";
 import { useTimer } from "@/hooks/useTimer";
 import ProblemItem from "@/components/quiz/ProblemItem";
 import NotificationToast from "@/components/quiz/NotificationToast";
+import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 import { mockQuizData } from "@/mocks/mockQuizData"; // モックデータを使用する場合
 
 // --- モック設定 ---
@@ -28,6 +29,7 @@ const AnswerInputScreen = () => {
     [key: string]: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showBlockerDialog, setShowBlockerDialog] = useState(false);
 
   // --- 初期設定値 ---
   const timeLimitPerQuestion = parseInt(
@@ -263,25 +265,54 @@ const AnswerInputScreen = () => {
     [timeRemaining] // isSubmitting を Ref で管理しているので依存配列から削除
   );
 
-  // --- 離脱防止 Effect ---
+  // --- Blocker の設定 ---
+  const shouldBlock = useCallback(() => {
+    // ブロックする条件: タイマー作動中 & 送信中でない
+
+    return timeRemaining > 0 && !isSubmittingRef.current;
+  }, [timeRemaining]); // Ref は依存配列に不要
+
+  const blocker = useBlocker(shouldBlock);
+
+  // Blockerの状態が変わったらダイアログ表示を制御する Effect を追加
+  useEffect(() => {
+    if (blocker && blocker.state === "blocked") {
+      setShowBlockerDialog(true); // Blocker がブロック状態ならダイアログ表示
+    } else {
+      setShowBlockerDialog(false); // それ以外なら非表示
+    }
+  }, [blocker]); // blocker オブジェクトの変更を監視
+
+  // ダイアログのOK/キャンセル処理関数を追加
+  const handleConfirmNavigation = () => {
+    setShowBlockerDialog(false); // ダイアログを閉じる
+    if (blocker && blocker.proceed) {
+      blocker.proceed(); // ナビゲーションを許可
+    }
+  };
+
+  const handleCancelNavigation = () => {
+    setShowBlockerDialog(false); // ダイアログを閉じる
+    if (blocker && blocker.reset) {
+      blocker.reset(); // ナビゲーションをキャンセルし、blockerの状態をリセット
+    }
+  };
+
+  // リロードやタブ閉じのために残す
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      // Ref を使って最新の状態を確認
-      if (
-        timeRemaining > 0 &&
-        !isSubmittingRef.current && // Ref で判定
-        Object.keys(selectedAnswersRef.current).length > 0 // Ref で判定
-      ) {
+      if (shouldBlock()) {
+        // useBlocker と同じ条件を使用
         event.preventDefault();
-        event.returnValue =
-          "解答中にページを離れると、進捗が失われる可能性があります。よろしいですか？";
+        // 注意: カスタムメッセージは表示されません
+        event.returnValue = ""; // 警告を出す意図を示す（空文字でOK）
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [timeRemaining]); // isSubmitting, selectedAnswers を Ref で管理しているので依存配列から削除
+  }, [shouldBlock]); // shouldBlock 関数を依存配列に追加
 
   // --- レンダリング ---
   if (isLoading) {
@@ -358,6 +389,14 @@ const AnswerInputScreen = () => {
           >
             {isSubmitting ? "提出中..." : "解答する"}
           </Button>
+
+          {/* Blocker 用確認ダイアログを追加 */}
+          <ConfirmationDialog
+            show={showBlockerDialog}
+            onConfirm={handleConfirmNavigation}
+            onCancel={handleCancelNavigation}
+            message="解答中にページを離れると、進捗が失われる可能性があります。よろしいですか？"
+          />
 
           {/* エラー表示 */}
           {error && (
