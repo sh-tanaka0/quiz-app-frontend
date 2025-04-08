@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Home } from "lucide-react";
@@ -55,6 +55,12 @@ const AnswerResultDashboard = () => {
         )
       : quizResults;
   }, [selectedCategory, quizResults]);
+
+  // Scrollrestoration利用に後ほど変更予定
+  useEffect(() => {
+    // このコンポーネントが表示されたとき（正確にはパスが変わったとき）に実行
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   // --- レンダリング ---
 
