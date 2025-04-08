@@ -79,9 +79,14 @@ interface OptionsListProps {
 }
 
 const OptionsList: React.FC<OptionsListProps> = ({ problem }) => {
+  // 選択肢のインデックスをABCD...に変換する関数
+  const getOptionLabel = (index: number): string => {
+    return String.fromCharCode(65 + index); // 65は'A'のUnicodeコードポイント
+  };
+
   return (
     <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-      {problem.options.map((option) => {
+      {problem.options.map((option, optionIndex) => {
         const isCorrectAnswer = problem.correctAnswer === option.id;
         const isUserAnswer = problem.userAnswer === option.id;
         return (
@@ -104,7 +109,9 @@ const OptionsList: React.FC<OptionsListProps> = ({ problem }) => {
               )}
             </div>
             <div className="flex-1">
-              <span className="font-semibold mr-1">{option.id}:</span>
+              <span className="font-semibold mr-1">
+                {getOptionLabel(optionIndex)}:
+              </span>
               <span>{option.text}</span>
             </div>
           </div>

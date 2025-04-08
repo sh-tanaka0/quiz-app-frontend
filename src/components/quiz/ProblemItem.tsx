@@ -19,13 +19,18 @@ const ProblemItem: React.FC<ProblemItemProps> = ({
   isTimeUp,
   isSubmitting,
 }) => {
+  // 選択肢のインデックスをABCD...に変換する関数
+  const getOptionLabel = (index: number): string => {
+    return String.fromCharCode(65 + index); // 65は'A'のUnicodeコードポイント
+  };
+
   return (
     <div className="mb-8 pb-6 border-b last:border-b-0">
       <h2 className="text-lg font-semibold mb-4 p-3 bg-gray-100 rounded-md">
         問題 {index + 1}: {problem.question}
       </h2>
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {problem.options.map((option) => (
+        {problem.options.map((option, optionIndex) => (
           <div
             key={option.id}
             onClick={() => onAnswerSelect(problem.questionId, option.id)}
@@ -59,7 +64,9 @@ const ProblemItem: React.FC<ProblemItemProps> = ({
               )}
             </div>
             <div className="flex-1">
-              <span className="font-semibold mr-1">{option.id}:</span>
+              <span className="font-semibold mr-1">
+                {getOptionLabel(optionIndex)}:
+              </span>
               {option.text}
             </div>
           </div>
