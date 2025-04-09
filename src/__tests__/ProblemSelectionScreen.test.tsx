@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
 
-import ProblemSelectionScreen from "./ProblemSelectionScreen"; // テスト対象コンポーネント
+import ProblemSelectionScreen from "../pages/ProblemSelectionScreen"; // テスト対象コンポーネント
 import {
   BOOK_SOURCE_OPTIONS,
   PROBLEM_COUNT_OPTIONS,
