@@ -202,4 +202,61 @@ describe("AnswerInputScreen", () => {
     expect(mockSubmitQuizAnswers).not.toHaveBeenCalled();
     // ...
   });
+
+  describe("初期化と問題読み込み (Initialization and Data Loading)", () => {
+    it.todo("URLパラメータを正しく読み取り、stateの初期値が設定される");
+    it.todo("問題取得API (fetchQuizQuestions) を正しい引数で呼び出す");
+    it.todo("問題取得中にローディング状態が表示される");
+    it.todo("問題取得成功時に問題リストとタイマーが表示される");
+    it.todo("問題取得失敗時にエラーメッセージが表示される");
+    it.todo("モックデータ使用フラグが有効な場合、モックデータを読み込む");
+  });
+
+  describe("タイマー機能との連携 (Timer Interaction)", () => {
+    it.todo(
+      "モックタイマーの残り時間とフォーマットされた時間が正しく表示される"
+    );
+    it.todo("モックタイマーの警告レベルに応じてタイマーの色が変わる");
+    it.todo("モックタイマーの警告レベルに応じて通知トーストが表示される");
+    it.todo(
+      "モックタイマーの時間切れ時に onTimeUp コールバック経由で提出処理がトリガーされる"
+    );
+    // it.todo('タイマーが0になったら解答ボタンが無効化される'); // これは提出や選択のテストでカバーされるかも
+  });
+
+  describe("解答の選択 (Answer Selection)", () => {
+    it.todo(
+      "ProblemItem で選択肢をクリックすると onAnswerSelect が呼ばれ、選択状態が更新される"
+    );
+    it.todo("時間切れ後は新しい解答を選択できない");
+    it.todo("提出中は新しい解答を選択できない");
+  });
+
+  describe("解答の提出 (Submission Process)", () => {
+    it.todo(
+      "「解答する」ボタンクリック時に未解答があると window.confirm が呼ばれる"
+    );
+    it.todo("window.confirm でキャンセルすると submit API は呼ばれない");
+    it.todo(
+      "解答提出時に正しいペイロードで submit API (mockSubmitQuizAnswers) が呼ばれる"
+    );
+    it.todo("提出中は「解答する」ボタンが「提出中...」になり無効化される");
+    it.todo("submit API 成功時に結果画面へ正しい state で navigate する");
+    it.todo(
+      "submit API 失敗時にエラーメッセージが表示され、ボタンが有効に戻る"
+    );
+    it.todo(
+      "時間切れによる自動提出時にも submit API が呼ばれ、結果画面へ navigate する"
+    );
+    it.todo("提出処理中に再度「解答する」ボタンを押しても二重送信されない");
+  });
+
+  describe("画面離脱防止機能 (Navigation Blocking)", () => {
+    it.todo(
+      "解答中に離脱しようとすると useBlocker (モック) が作動し、確認ダイアログが表示される"
+    );
+    it.todo("確認ダイアログで「OK」を押すと blocker.proceed が呼ばれる");
+    it.todo("確認ダイアログで「キャンセル」を押すと blocker.reset が呼ばれる");
+    it.todo("時間切れ後や提出中はブロッカーが作動しない");
+  });
 });
