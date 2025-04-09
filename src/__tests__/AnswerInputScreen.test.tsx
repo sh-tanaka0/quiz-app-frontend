@@ -15,6 +15,14 @@ import AnswerInputScreen from "../pages/AnswerInputScreen"; // パスを調整
 // 関連する型定義
 import type { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz"; // パスを調整
 
+// 子コンポーネントとその Props 型をインポート
+import ProblemItem from "@/components/quiz/ProblemItem"; // パス調整
+import type { ProblemItemProps } from "@/components/quiz/ProblemItem"; // 型のみインポート
+import NotificationToast from "@/components/quiz/NotificationToast"; // パス調整
+import type { NotificationToastProps } from "@/components/quiz/NotificationToast"; // 型のみインポート
+import ConfirmationDialog from "@/components/common/ConfirmationDialog"; // パス調整
+import type { ConfirmationDialogProps } from "@/components/common/ConfirmationDialog"; // 型のみインポート
+
 // ==================================
 // モック設定
 // ==================================
@@ -89,6 +97,70 @@ vi.mock("@/hooks/useTimer", () => ({
   useTimer: mockUseTimer,
 }));
 
+// 各モックコンポーネントに渡された props を記録するための配列
+const mockProblemItemProps: ProblemItemProps[] = [];
+const mockNotificationToastProps: NotificationToastProps[] = [];
+const mockConfirmationDialogProps: ConfirmationDialogProps[] = [];
+
+// 2. 各子コンポーネントをモック化:
+// --- ProblemItem モック ---
+vi.mock("@/components/quiz/ProblemItem", () => ({
+  // default エクスポートをモックする
+  default: vi.fn((props: ProblemItemProps) => {
+    // 渡された props を記録
+    mockProblemItemProps.push(props);
+    // テストで識別しやすいようにシンプルな div をレンダリング
+    return (
+      <div data-testid={`mock-problem-item-${props.problem.questionId}`}>
+        {/* 必要なら props の一部を表示しても良い */}
+        Question: {props.problem.question} (Selected:{" "}
+        {props.selectedAnswer ?? "none"})
+        {/* 実際の選択肢レンダリングやクリック処理は不要 */}
+        {/* クリックをシミュレートしたい場合は、テストコードから props.onAnswerSelect を直接呼ぶ */}
+      </div>
+    );
+  }),
+}));
+
+// --- NotificationToast モック ---
+vi.mock("@/components/quiz/NotificationToast", () => ({
+  default: vi.fn((props: NotificationToastProps) => {
+    mockNotificationToastProps.push(props);
+    // show が true の場合のみ表示するシンプルなモック
+    if (!props.show) return null;
+    return (
+      <div
+        data-testid="mock-notification-toast"
+        data-level={props.level}
+        data-color={props.colorClass}
+      >
+        {props.message}
+      </div>
+    );
+  }),
+}));
+
+// --- ConfirmationDialog モック ---
+vi.mock("@/components/common/ConfirmationDialog", () => ({
+  default: vi.fn((props: ConfirmationDialogProps) => {
+    mockConfirmationDialogProps.push(props);
+    // show が true の場合のみ表示
+    if (!props.show) return null;
+    return (
+      <div data-testid="mock-confirmation-dialog">
+        <p>{props.message}</p>
+        {/* 実際のダイアログUIではなく、テストから操作できるボタンを用意 */}
+        <button data-testid="mock-confirm-button" onClick={props.onConfirm}>
+          {props.confirmText || "OK"}
+        </button>
+        <button data-testid="mock-cancel-button" onClick={props.onCancel}>
+          {props.cancelText || "キャンセル"}
+        </button>
+      </div>
+    );
+  }),
+}));
+
 // ==================================
 // テストスイート
 // ==================================
@@ -104,6 +176,11 @@ describe("AnswerInputScreen", () => {
     // useTimer モックの状態と呼び出し履歴をリセット
     mockUseTimer.mockClear();
     currentMockTimerState = { ...defaultMockTimerState }; // 状態をデフォルトに戻す
+
+    // 各テストの前に props 記録用配列をクリア
+    mockProblemItemProps.length = 0;
+    mockNotificationToastProps.length = 0;
+    mockConfirmationDialogProps.length = 0;
   });
 
   // --- テストケースはここに追加していく ---
