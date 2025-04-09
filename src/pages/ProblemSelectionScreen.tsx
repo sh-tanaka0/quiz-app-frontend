@@ -91,7 +91,11 @@ const ProblemSelectionScreen = () => {
               // 文字列で受け取り数値に変換して state を更新
               onValueChange={(value) => setProblemCount(parseInt(value, 10))}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger
+                aria-labelledby="problem-count-label"
+                data-testid="problem-count-select"
+                className="w-full"
+              >
                 <SelectValue placeholder="問題数を選択" />
               </SelectTrigger>
               <SelectContent>
@@ -112,7 +116,11 @@ const ProblemSelectionScreen = () => {
               value={timeLimit.toString()}
               onValueChange={(value) => setTimeLimit(parseInt(value, 10))}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger
+                aria-labelledby="time-limit-label"
+                data-testid="time-limit-select"
+                className="w-full"
+              >
                 <SelectValue placeholder="1問あたりの時間" />
               </SelectTrigger>
               <SelectContent>
