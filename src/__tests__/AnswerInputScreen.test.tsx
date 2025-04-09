@@ -1,45 +1,77 @@
-// src/pages/AnswerInputScreen.test.tsx (例)
+// src/pages/AnswerInputScreen.test.tsx
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
+// Vitest から Mock 型をインポート
+import type { Mock } from "vitest";
 
 // テスト対象コンポーネント
-import AnswerInputScreen from "../pages/AnswerInputScreen"; // パスを調整してください
+import AnswerInputScreen from "../pages/AnswerInputScreen"; // パスを調整
 
-// 必要に応じて関連する型定義をインポート (後で使う可能性あり)
-import type { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz"; // パスを調整してください
+// 関連する型定義
+import type { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz"; // パスを調整
 
-// --- モック設定 ---
-// モック対象のAPIサービス関数をインポート (型推論のため)
-import * as apiService from "@/services/api"; // パスを調整
+// ==================================
+// モック設定
+// ==================================
 
-// vi.fn() でモック関数を作成
+// --- API Service Mocks ---
+import * as apiService from "@/services/api"; // 元のAPIサービス (型推論用)
 const mockFetchQuizQuestions = vi.fn();
 const mockSubmitQuizAnswers = vi.fn();
 
-// '@/services/api' モジュールをモック化
 vi.mock("@/services/api", async () => {
-  const actual = await vi.importActual<typeof apiService>("@/services/api"); // 元のモジュール情報も取得
+  const actual = await vi.importActual<typeof apiService>("@/services/api");
   return {
-    ...actual, // 元のモジュールの他のエクスポートはそのまま維持 (もしあれば)
-    fetchQuizQuestions: mockFetchQuizQuestions, // fetchQuizQuestions をモック関数に差し替え
-    submitQuizAnswers: mockSubmitQuizAnswers, // submitQuizAnswers をモック関数に差し替え
+    ...actual, // 他のエクスポートがあれば維持
+    fetchQuizQuestions: mockFetchQuizQuestions,
+    submitQuizAnswers: mockSubmitQuizAnswers,
   };
 });
 
-// --- テストスイート定義 ---
+// --- React Router DOM Mocks ---
+const mockNavigate = vi.fn();
+const mockSearchParamsGet = vi.fn();
+const mockBlockerProceed = vi.fn();
+const mockBlockerReset = vi.fn();
+
+// useBlocker が返すオブジェクトの型定義
+type Blocker = {
+  state: "blocked" | "unblocked" | "proceeding";
+  proceed: Mock; // インポートした Mock 型を使用
+  reset: Mock; // インポートした Mock 型を使用
+};
+// useBlocker の戻り値を制御する変数 (let に変更)
+let mockReturnedBlocker: Blocker | null = null;
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  // useSearchParams が返す配列の第一要素 (searchParams オブジェクト) のモック
+  const mockSearchParams = { get: mockSearchParamsGet };
+  return {
+    ...(typeof actual === "object" ? actual : {}), // 元のエクスポートを維持
+    useNavigate: () => mockNavigate, // useNavigate のモック
+    useSearchParams: () => [mockSearchParams, vi.fn()], // useSearchParams のモック
+    useBlocker: () => mockReturnedBlocker, // useBlocker のモック (制御変数を使用)
+  };
+});
+
+// ==================================
+// テストスイート
+// ==================================
 describe("AnswerInputScreen", () => {
-  // 各テストケース実行前の共通処理 (ステップ2以降で使う)
   beforeEach(() => {
-    // モックの呼び出し履歴などをクリア
+    // 各テストの前にすべてのモックの呼び出し履歴等をクリア
     vi.clearAllMocks();
-    // 必要に応じて各モック関数のデフォルト動作をここで設定しても良いかも
-    // 例: mockFetchQuizQuestions.mockResolvedValue({ sessionId: 'test-session', questions: [] });
-    // 例: mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+
+    // useSearchParams の get 動作をリセット (テストごとに設定するため)
+    mockSearchParamsGet.mockReset();
+    // useBlocker の戻り値をリセット (デフォルトはブロックしない状態)
+    mockReturnedBlocker = null; // let なので再代入可能
   });
 
-  // --- テストケース記述エリア (ステップ8以降で追加) ---
+  // --- テストケースはここに追加していく ---
   // it('最初のテストケース', () => { /* ... */ });
 });
