@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
 // Vitest から Mock 型をインポート
-import type { Mock } from "vitest";
+import type { Mock, MockInstance } from "vitest";
 import { useTimer } from "@/hooks/useTimer"; // パスを調整
 import type { TimerState } from "@/hooks/useTimer"; // パスを調整
 
@@ -161,6 +161,9 @@ vi.mock("@/components/common/ConfirmationDialog", () => ({
   }),
 }));
 
+// window.confirm のスパイを保持する変数 (let で宣言)
+let mockConfirmSpy: MockInstance<(message?: string | undefined) => boolean>;
+
 // ==================================
 // テストスイート
 // ==================================
@@ -181,8 +184,22 @@ describe("AnswerInputScreen", () => {
     mockProblemItemProps.length = 0;
     mockNotificationToastProps.length = 0;
     mockConfirmationDialogProps.length = 0;
+    // 各テストの前に window.confirm をスパイする
+    mockConfirmSpy = vi.spyOn(window, "confirm");
   });
 
   // --- テストケースはここに追加していく ---
-  // it('最初のテストケース', () => { /* ... */ });
+
+  // 例: window.confirm で false (キャンセル) を返すテストケース
+  it("未解答で提出時に確認ダイアログでキャンセルすると送信しない", () => {
+    // このテストケース内での confirm の戻り値を false に設定
+    mockConfirmSpy.mockReturnValueOnce(false);
+
+    // ... (コンポーネントを render し、未解答状態で提出ボタンを押す操作) ...
+
+    // confirm が呼ばれたか、submit API が呼ばれなかったかなどを検証
+    expect(mockConfirmSpy).toHaveBeenCalled();
+    expect(mockSubmitQuizAnswers).not.toHaveBeenCalled();
+    // ...
+  });
 });
