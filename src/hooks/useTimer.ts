@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { NotificationLevel } from "@/types/quiz";
 
 // フックが返す値のインターフェース
-interface TimerState {
+export interface TimerState {
   timeRemaining: number; // 残り時間（秒）
   warningLevel: NotificationLevel; // 現在の警告レベル
   timerColorClass: string; // タイマー表示用のCSSクラス
