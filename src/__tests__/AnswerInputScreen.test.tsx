@@ -875,22 +875,506 @@ describe("AnswerInputScreen", () => {
     });
 
     describe("解答の提出 (Submission Process)", () => {
-      it.todo(
-        "「解答する」ボタンクリック時に未解答があると window.confirm が呼ばれる"
-      );
-      it.todo("window.confirm でキャンセルすると submit API は呼ばれない");
-      it.todo(
-        "解答提出時に正しいペイロードで submit API (mockSubmitQuizAnswers) が呼ばれる"
-      );
-      it.todo("提出中は「解答する」ボタンが「提出中...」になり無効化される");
-      it.todo("submit API 成功時に結果画面へ正しい state で navigate する");
-      it.todo(
-        "submit API 失敗時にエラーメッセージが表示され、ボタンが有効に戻る"
-      );
-      it.todo(
-        "時間切れによる自動提出時にも submit API が呼ばれ、結果画面へ navigate する"
-      );
-      it.todo("提出処理中に再度「解答する」ボタンを押しても二重送信されない");
+      it("「解答する」ボタンクリック時に未解答があると window.confirm が呼ばれる", async () => {
+        // 問題をロードし、1問だけ解答する
+        const user = userEvent.setup();
+        const mockProblems: Problem[] = [
+          {
+            questionId: "q1",
+            question: "Q1",
+            options: [
+              { id: "a", text: "A" },
+              { id: "b", text: "B" },
+            ],
+            correctAnswer: "a",
+            explanation: "",
+            category: "",
+          },
+          {
+            questionId: "q2",
+            question: "Q2",
+            options: [
+              { id: "c", text: "C" },
+              { id: "d", text: "D" },
+            ],
+            correctAnswer: "c",
+            explanation: "",
+            category: "",
+          },
+        ];
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: mockProblems,
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true }); // タイマー動作中
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() =>
+          expect(mockProblemItemProps.length).toBe(mockProblems.length)
+        );
+
+        // 1問目 (q1) だけ解答
+        const problem1Props = mockProblemItemProps.find(
+          (p) => p.problem.questionId === "q1"
+        );
+        problem1Props?.onAnswerSelect("q1", "a");
+
+        // window.confirm が呼ばれることを確認するため、一旦 true を返すようにしておく
+        mockConfirmSpy.mockReturnValue(true);
+        // submit API は呼ばれる前提で適当に設定
+        mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+
+        // Act: 提出ボタンをクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // Assert: window.confirm が呼ばれたことを確認
+        expect(mockConfirmSpy).toHaveBeenCalledTimes(1);
+        // オプション: メッセージ内容も確認 (未解答が1問の場合)
+        expect(mockConfirmSpy).toHaveBeenCalledWith(
+          expect.stringContaining("未解答の問題が 1 問ありますが提出しますか？")
+        );
+      });
+      it("window.confirm でキャンセルすると submit API は呼ばれない", async () => {
+        // 未解答がある状態は上記テストと同様
+        const user = userEvent.setup();
+        const mockProblems: Problem[] = [
+          {
+            questionId: "q1",
+            question: "What is the answer to question 1?",
+            options: [{ id: "a", text: "A" }],
+            correctAnswer: "a",
+            explanation: "",
+            category: "",
+          },
+          {
+            questionId: "q2",
+            question: "What is the answer to question 2?",
+            options: [{ id: "c", text: "C" }],
+            correctAnswer: "c",
+            explanation: "",
+            category: "",
+          },
+        ];
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: mockProblems,
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() =>
+          expect(mockProblemItemProps.length).toBe(mockProblems.length)
+        );
+        mockProblemItemProps[0]?.onAnswerSelect("q1", "a"); // 1問目のみ解答
+
+        // window.confirm で "Cancel" (false) を返すように設定
+        mockConfirmSpy.mockReturnValueOnce(false);
+
+        // Act: 提出ボタンをクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // Assert:
+        // 1. window.confirm は呼ばれた
+        expect(mockConfirmSpy).toHaveBeenCalledTimes(1);
+        // 2. submit API は呼ばれなかった
+        expect(mockSubmitQuizAnswers).not.toHaveBeenCalled();
+        // 3. ボタンは有効なまま (提出中にならない)
+        expect(submitButton).toBeEnabled();
+        expect(submitButton).toHaveTextContent("解答する");
+      });
+      it("解答提出時に正しいペイロードで submit API (mockSubmitQuizAnswers) が呼ばれる", async () => {
+        // 全問解答した状態を作る
+        const user = userEvent.setup();
+        const mockSessionId = "session-payload-test";
+        const mockProblems: Problem[] = [
+          {
+            questionId: "q1",
+            question: "Q1",
+            options: [
+              { id: "a", text: "A" },
+              { id: "b", text: "B" },
+            ],
+            correctAnswer: "a",
+            explanation: "",
+            category: "catA",
+          },
+          {
+            questionId: "q2",
+            question: "Q2",
+            options: [
+              { id: "c", text: "C" },
+              { id: "d", text: "D" },
+            ],
+            correctAnswer: "c",
+            explanation: "",
+            category: "catB",
+          },
+        ];
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: mockSessionId,
+          questions: mockProblems,
+        });
+        mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // API自体は成功させる
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() =>
+          expect(mockProblemItemProps.length).toBe(mockProblems.length)
+        );
+
+        // 全問解答 (例: q1->b, q2->c)
+        mockProblemItemProps
+          .find((p) => p.problem.questionId === "q1")
+          ?.onAnswerSelect("q1", "b");
+        mockProblemItemProps
+          .find((p) => p.problem.questionId === "q2")
+          ?.onAnswerSelect("q2", "c");
+
+        // Act: 提出ボタンをクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // Assert: submit API が正しいペイロードで呼ばれたか
+        await waitFor(() => {
+          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          // 呼び出し時の引数 (ペイロード) を取得
+          const submittedPayload = mockSubmitQuizAnswers.mock
+            .calls[0][0] as AnswerPayload;
+
+          // 1. sessionId が正しいか
+          expect(submittedPayload.sessionId).toBe(mockSessionId);
+
+          // 2. answers 配列の長さが問題数と一致するか
+          expect(submittedPayload.answers).toHaveLength(mockProblems.length);
+
+          // 3. 各問題の解答が正しいか (find などで確認)
+          expect(
+            submittedPayload.answers.find((a) => a.questionId === "q1")?.answer
+          ).toBe("b");
+          expect(
+            submittedPayload.answers.find((a) => a.questionId === "q2")?.answer
+          ).toBe("c");
+          // 4. (オプション) 未解答の場合も確認するテストを追加しても良い
+          //    例: expect(submittedPayload.answers.find(a => a.questionId === 'q3')?.answer).toBeNull();
+        });
+      });
+      it("提出中は「解答する」ボタンが「提出中...」になり無効化される", async () => {
+        // 提出処理がすぐに完了しないように API モックを設定
+        const user = userEvent.setup();
+        let resolveSubmit: (value: { results: [] }) => void;
+        mockSubmitQuizAnswers.mockImplementation(
+          () =>
+            new Promise((res) => {
+              resolveSubmit = res;
+            })
+        ); // 応答を保留
+        // 他の初期設定
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            {
+              questionId: "q1",
+              /*...*/ options: [],
+              correctAnswer: "a",
+              explanation: "",
+              category: "",
+            },
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() => expect(mockProblemItemProps.length).toBe(1));
+        mockProblemItemProps[0]?.onAnswerSelect("q1", "a"); // 全問解答
+
+        // Act: 提出ボタンをクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // Assert: ボタンの表示と状態が変わるのを待つ
+        // findByRole は要素が見つかるまで待機する
+        const submittingButton = await screen.findByRole("button", {
+          name: "提出中...",
+        });
+        expect(submittingButton).toBeInTheDocument();
+        expect(submittingButton).toBeDisabled();
+
+        // クリーンアップ (Promise を解決させる)
+        resolveSubmit({ results: [] });
+      });
+      it("submit API 成功時に結果画面へ正しい state で navigate する", async () => {
+        // 提出が成功する状態を作る
+        const user = userEvent.setup();
+        const mockProblems: Problem[] = [
+          {
+            questionId: "q1",
+            question: "Q1",
+            options: [
+              { id: "a", text: "A" },
+              { id: "b", text: "B" },
+            ],
+            correctAnswer: "a",
+            explanation: "",
+            category: "catA",
+          },
+          {
+            questionId: "q2",
+            question: "Q2",
+            options: [
+              { id: "c", text: "C" },
+              { id: "d", text: "D" },
+            ],
+            correctAnswer: "d",
+            explanation: "",
+            category: "catB",
+          },
+        ];
+        const mockResultsData: AnswersApiResponse = {
+          // submit API が返す結果データ
+          results: [
+            {
+              questionId: "q1",
+              category: "catA",
+              isCorrect: true,
+              userAnswer: "a",
+              correctAnswer: "a",
+              question: "Q1",
+              options: mockProblems[0].options,
+              explanation: "",
+            },
+            {
+              questionId: "q2",
+              category: "catB",
+              isCorrect: false,
+              userAnswer: "c",
+              correctAnswer: "d",
+              question: "Q2",
+              options: mockProblems[1].options,
+              explanation: "",
+            },
+          ],
+        };
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: mockProblems,
+        });
+        mockSubmitQuizAnswers.mockResolvedValue(mockResultsData); // 成功時のデータを設定
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() =>
+          expect(mockProblemItemProps.length).toBe(mockProblems.length)
+        );
+
+        // 何か解答しておく (全問解答でなくても良い)
+        mockProblemItemProps[0]?.onAnswerSelect("q1", "a");
+        mockProblemItemProps[1]?.onAnswerSelect("q2", "c");
+
+        // Act: 提出ボタンをクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // Assert: navigate が呼ばれるのを待つ
+        await waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledTimes(1);
+          // navigate の引数を検証
+          expect(mockNavigate).toHaveBeenCalledWith(
+            "/result", // 遷移先のパス
+            expect.objectContaining({
+              // 第二引数のオブジェクト
+              state: expect.objectContaining({
+                // state プロパティ
+                quizResults: mockResultsData.results, // API が返した結果
+                totalQuestions: mockProblems.length, // 問題数
+                correctQuestions: mockResultsData.results.filter(
+                  (r) => r.isCorrect
+                ).length, // 正解数
+              }),
+            })
+          );
+        });
+      });
+      it("submit API 失敗時にエラーメッセージが表示され、ボタンが有効に戻る", async () => {
+        // 提出が失敗する状態を作る
+        const user = userEvent.setup();
+        const errorMessage = "提出に失敗しました";
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            {
+              questionId: "q1",
+              /*...*/ options: [],
+              correctAnswer: "a",
+              explanation: "",
+              category: "",
+            },
+          ],
+        });
+        mockSubmitQuizAnswers.mockRejectedValue(new Error(errorMessage)); // 失敗させる
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() => expect(mockProblemItemProps.length).toBe(1));
+        mockProblemItemProps[0]?.onAnswerSelect("q1", "a"); // 解答
+
+        // Act: 提出ボタンをクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // Assert:
+        // 1. エラーメッセージが表示されるのを待つ
+        await screen.findByText(`エラー: ${errorMessage}`);
+
+        // 2. navigate が呼ばれていないことを確認
+        expect(mockNavigate).not.toHaveBeenCalled();
+
+        // 3. ボタンが有効に戻り、テキストが「解答する」に戻っていることを確認
+        //    ※ findByText でエラーが出た時点でボタンの状態は戻っているはず
+        expect(submitButton).toBeEnabled();
+        expect(submitButton).toHaveTextContent("解答する");
+      });
+      it("時間切れによる自動提出時にも submit API が呼ばれ、結果画面へ navigate する", async () => {
+        // 正常に初期化され、提出 API が成功する状態
+        const mockProblems: Problem[] = [
+          /* ... */
+        ];
+        const mockResultsData: AnswersApiResponse = {
+          results: [
+            /* ... */
+          ],
+        };
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: mockProblems,
+        });
+        mockSubmitQuizAnswers.mockResolvedValue(mockResultsData);
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 1, isTimerRunning: true }); // 時間切れ直前の状態
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() =>
+          expect(mockProblemItemProps.length).toBe(mockProblems.length)
+        );
+
+        // onTimeUp コールバックを取得
+        const onTimeUpCallback = mockUseTimer.mock.calls[0]?.[1]?.onTimeUp;
+        expect(onTimeUpCallback).toBeDefined();
+
+        // Act: 時間切れをシミュレート (onTimeUp を呼び出す)
+        if (onTimeUpCallback) {
+          await onTimeUpCallback();
+        } else {
+          throw new Error("onTimeUp callback was not passed to useTimer mock");
+        }
+
+        // Assert:
+        // 1. confirm ダイアログは呼ばれない (時間切れ提出なので)
+        expect(mockConfirmSpy).not.toHaveBeenCalled();
+
+        // 2. submit API が呼ばれる
+        await waitFor(() => {
+          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+        });
+
+        // 3. navigate が結果画面へ呼ばれる
+        await waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledTimes(1);
+          expect(mockNavigate).toHaveBeenCalledWith(
+            "/result",
+            expect.anything()
+          ); // state の内容は別テストで確認済み
+        });
+      });
+      it("提出処理中に再度「解答する」ボタンを押しても二重送信されない", async () => {
+        // 提出がすぐに完了しない状態を作る
+        const user = userEvent.setup();
+        let resolveSubmit: (value: { results: [] }) => void;
+        mockSubmitQuizAnswers.mockImplementation(
+          () =>
+            new Promise((res) => {
+              resolveSubmit = res;
+            })
+        );
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            {
+              questionId: "q1",
+              /*...*/ options: [],
+              correctAnswer: "a",
+              explanation: "",
+              category: "",
+            },
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() => expect(mockProblemItemProps.length).toBe(1));
+        mockProblemItemProps[0]?.onAnswerSelect("q1", "a"); // 解答
+
+        // Act: 1回目のクリック
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+
+        // 提出中表示になるのを待つ
+        await screen.findByRole("button", { name: "提出中..." });
+        expect(submitButton).toBeDisabled(); // ボタンが無効化されているはず
+
+        // Act: 2回目のクリック (無効化されているが念のためクリックを試みる)
+        await user.click(submitButton); // 無効なのでイベントは発生しないはず
+
+        // Assert: submit API がまだ1回しか呼ばれていないことを確認
+        expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+
+        // Act: 提出を完了させる
+        resolveSubmit({ results: [] });
+        await waitFor(() => expect(mockNavigate).toHaveBeenCalled()); // 遷移するまで待つ
+
+        // Assert: 最終的に submit API が1回だけ呼ばれたことを再確認
+        expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+      });
     });
 
     describe("画面離脱防止機能 (Navigation Blocking)", () => {
