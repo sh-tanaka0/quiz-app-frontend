@@ -9,17 +9,17 @@ import { BrowserRouter } from "react-router-dom";
 import type { MockInstance } from "vitest";
 
 // テスト対象コンポーネント
-import AnswerInputScreen from "../pages/AnswerInputScreen"; // パスを調整
+import AnswerInputScreen from "../pages/AnswerInputScreen";
 
 // 関連する型定義・コンポーネント・フック
-import type { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz"; // パスを調整
-import type { ProblemItemProps } from "@/components/quiz/ProblemItem"; // パス調整
-import type { NotificationToastProps } from "@/components/quiz/NotificationToast"; // パス調整
-import type { ConfirmationDialogProps } from "@/components/common/ConfirmationDialog"; // パス調整
-import type { TimerState, TimerOptions } from "@/hooks/useTimer"; // 型取得のため
-import * as apiServiceOriginal from "@/services/api"; // 元のモジュール情報 (型推論用)
-import * as routerOriginal from "react-router-dom"; // 元のモジュール情報 (型推論用)
-import * as timerOriginal from "@/hooks/useTimer"; // 元のモジュール情報 (型推論用)
+import type { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz";
+import type { ProblemItemProps } from "@/components/quiz/ProblemItem";
+import type { NotificationToastProps } from "@/components/quiz/NotificationToast";
+import type { ConfirmationDialogProps } from "@/components/common/ConfirmationDialog";
+import type { TimerState, TimerOptions } from "@/hooks/useTimer";
+import * as apiServiceOriginal from "@/services/api";
+import * as routerOriginal from "react-router-dom";
+import * as timerOriginal from "@/hooks/useTimer";
 
 // ==================================
 // vi.hoisted によるモック関数定義
@@ -840,7 +840,7 @@ describe("AnswerInputScreen", () => {
         mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // 提出は成功させる
 
         // Act: レンダリングと初期化
-        await renderAndWaitForInit(mockProblems); // <-- ★★★ it 内で呼び出す
+        await renderAndWaitForInit(mockProblems);
 
         // Act: onTimeUp コールバックを取得して呼び出す
         const lastCallArgs =
@@ -876,7 +876,7 @@ describe("AnswerInputScreen", () => {
         );
 
         // Act: レンダリングと初期化
-        await renderAndWaitForInit(mockProblems); // <-- ★★★ it 内で呼び出す
+        await renderAndWaitForInit(mockProblems);
 
         // Act: 解答して提出開始
         mockProblemItemProps
