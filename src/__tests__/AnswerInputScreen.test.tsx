@@ -13,7 +13,12 @@ import type { TimerState } from "@/hooks/useTimer"; // パスを調整
 import AnswerInputScreen from "../pages/AnswerInputScreen"; // パスを調整
 
 // 関連する型定義
-import type { Problem, AnswerPayload, AnswersApiResponse } from "@/types/quiz"; // パスを調整
+import type {
+  Problem,
+  AnswerPayload,
+  AnswersApiResponse,
+  NotificationLevel,
+} from "@/types/quiz"; // パスを調整
 
 // 子コンポーネントとその Props 型をインポート
 import ProblemItem from "@/components/quiz/ProblemItem"; // パス調整
@@ -400,13 +405,220 @@ describe("AnswerInputScreen", () => {
   });
 
   describe("タイマー機能との連携 (Timer Interaction)", () => {
+    it("モックタイマーの残り時間とフォーマットされた時間が正しく表示される", async () => {
+      //  API と searchParams の基本設定
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: "s1",
+        questions: [
+          {
+            questionId: "q1",
+            question: "Q1",
+            options: [],
+            correctAnswer: "a",
+            explanation: "e1",
+            category: "c1",
+          },
+        ],
+      });
+      mockSearchParamsGet.mockReturnValue("10");
+      //  useTimer のモック状態を設定
+      const expectedFormattedTime = "03:45";
+      setMockTimerState({ formattedTime: expectedFormattedTime });
+
+      // Act: レンダリングし、初期化完了を待つ
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+      await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled()); // API呼び出し = 初期化完了の目安
+
+      // Assert: 設定したフォーマット済み時間が表示されているか確認
+      expect(screen.getByText(expectedFormattedTime)).toBeInTheDocument();
+    });
+    it("モックタイマーの警告レベルに応じてタイマーの色が変わる", async () => {
+      //  API と searchParams の基本設定
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: "s1",
+        questions: [
+          {
+            questionId: "q1",
+            question: "Q1",
+            options: [],
+            correctAnswer: "a",
+            explanation: "e1",
+            category: "c1",
+          },
+        ],
+      });
+      mockSearchParamsGet.mockReturnValue("10");
+      //  警告レベルが 'warning' の状態をシミュレート
+      const expectedFormattedTime = "01:23"; // 表示確認用
+      const expectedColorClass = "text-orange-500"; // useTimer が返すはずのクラス名
+      setMockTimerState({
+        warningLevel: "warning",
+        timerColorClass: expectedColorClass, // モックがこのクラスを返すように設定
+        formattedTime: expectedFormattedTime,
+      });
+
+      // Act: レンダリングし、初期化完了を待つ
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+      await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled());
+
+      // Assert:
+      // 1. 時間表示要素を取得
+      const timeElement = screen.getByText(expectedFormattedTime);
+      expect(timeElement).toBeInTheDocument();
+      // 2. 時間表示要素に期待される色クラスが付与されているか確認
+      expect(timeElement).toHaveClass(expectedColorClass);
+
+      // 3. (オプション) 時計アイコンにもクラスが付与されているか確認
+      //    アイコン自体は lucide-react のものなので、直接テストは難しい場合がある
+      //    親要素などでクラスを頼りに探すか、アイコンコンポーネントをモックしてテストする
+      const clockIcon = timeElement.previousElementSibling; // 例: timeElement の直前の要素がアイコンだと仮定
+      if (clockIcon) {
+        // アイコンが見つかればクラスを確認
+        expect(clockIcon).toHaveClass(expectedColorClass);
+      }
+    });
+    it("モックタイマーの警告レベルに応じて通知トーストが表示される", async () => {
+      //  API と searchParams の基本設定
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: "s1",
+        questions: [
+          /* ... */
+        ],
+      });
+      mockSearchParamsGet.mockReturnValue("10");
+      //  通知が表示される状態をシミュレート
+      const notificationMessage = "残り時間が10%を切りました！";
+      const notificationLevel: NotificationLevel = "critical";
+      setMockTimerState({
+        notification: {
+          show: true,
+          message: notificationMessage,
+          level: notificationLevel,
+        },
+        timerColorClass: "text-red-600", // 通知レベルに合わせた色クラスも設定
+      });
+
+      // Act: レンダリングし、初期化完了を待つ
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+      await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled());
+
+      // Assert:
+      // 1. NotificationToast のモックが呼ばれたことを確認 (props 配列を使用)
+      expect(mockNotificationToastProps.length).toBeGreaterThan(0);
+      // 2. 最後に渡された props を検証
+      const lastProps =
+        mockNotificationToastProps[mockNotificationToastProps.length - 1];
+      expect(lastProps.show).toBe(true);
+      expect(lastProps.message).toBe(notificationMessage);
+      expect(lastProps.level).toBe(notificationLevel);
+      expect(lastProps.colorClass).toBe("text-red-600"); // 渡された色クラス
+
+      // 3. (別のアサーション方法) モックが表示する内容で検証
+      //    NotificationToast のモック実装が data-testid やメッセージを表示する場合
+      const toastElement = screen.getByTestId("mock-notification-toast");
+      expect(toastElement).toBeInTheDocument();
+      expect(toastElement).toHaveTextContent(notificationMessage);
+      expect(toastElement).toHaveAttribute("data-level", notificationLevel);
+      expect(toastElement).toHaveAttribute("data-color", "text-red-600");
+    });
+
+    it("モックタイマーの通知状態(show:false)では NotificationToast が表示されない", async () => {
+      //  通知が表示されない状態 (デフォルト)
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: "s1",
+        questions: [
+          /* ... */
+        ],
+      });
+      mockSearchParamsGet.mockReturnValue("10");
+      // setMockTimerState はデフォルトで notification.show が false なので不要
+
+      // Act: レンダリングし、初期化完了を待つ
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+      await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled());
+
+      // Assert: NotificationToast のモックが表示されていないことを確認
+      // (props 配列の最後の要素の show が false か、または要素自体が存在しないか)
+      if (mockNotificationToastProps.length > 0) {
+        expect(
+          mockNotificationToastProps[mockNotificationToastProps.length - 1].show
+        ).toBe(false);
+      }
+      // または要素が存在しないことを確認
+      expect(
+        screen.queryByTestId("mock-notification-toast")
+      ).not.toBeInTheDocument();
+    });
     it.todo(
-      "モックタイマーの残り時間とフォーマットされた時間が正しく表示される"
-    );
-    it.todo("モックタイマーの警告レベルに応じてタイマーの色が変わる");
-    it.todo("モックタイマーの警告レベルに応じて通知トーストが表示される");
-    it.todo(
-      "モックタイマーの時間切れ時に onTimeUp コールバック経由で提出処理がトリガーされる"
+      "モックタイマーの時間切れ時に onTimeUp コールバック経由で提出処理がトリガーされる",
+      async () => {
+        //  API と searchParams の基本設定
+        const mockProblems: Problem[] = [
+          {
+            questionId: "q1",
+            question: "Sample question text",
+            options: [],
+            correctAnswer: "a",
+            explanation: "",
+            category: "",
+          },
+        ];
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: mockProblems,
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        //  解答提出APIは成功するように設定
+        mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+        //  useTimer の状態は timeRemaining > 0 で設定 (時間切れ「前」の状態)
+        setMockTimerState({ timeRemaining: 1, isTimerRunning: true });
+
+        // Act: レンダリングし、初期化完了を待つ
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled());
+
+        // Act: useTimer に渡された onTimeUp コールバックを取得
+        // mockUseTimer.mock.calls[0] は useTimer が最初に呼ばれた時の引数リスト
+        // [1] は第二引数の options オブジェクト、.onTimeUp でコールバック取得
+        const onTimeUpCallback = mockUseTimer.mock.calls[0]?.[1]?.onTimeUp;
+        expect(onTimeUpCallback).toBeDefined(); // コールバックが渡されているか確認
+
+        // Act: 取得した onTimeUp コールバックを呼び出して時間切れをシミュレート
+        // handleTimeUp -> handleSubmitRevised が async なので await する
+        if (onTimeUpCallback) {
+          await onTimeUpCallback();
+        } else {
+          throw new Error("onTimeUp callback was not passed to useTimer mock");
+        }
+
+        // Assert: 解答提出 API (mockSubmitQuizAnswers) が呼び出されたことを確認
+        // handleSubmitRevised が非同期で submit を呼ぶため waitFor を使う
+        await waitFor(() => {
+          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          // オプション: 時間切れを示す情報が渡されているか確認 (もしあれば)
+          // expect(mockSubmitQuizAnswers).toHaveBeenCalledWith(expect.objectContaining({ isTimeUp: true }));
+        });
+      }
     );
     // it.todo('タイマーが0になったら解答ボタンが無効化される'); // これは提出や選択のテストでカバーされるかも
   });
