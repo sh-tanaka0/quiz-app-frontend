@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// テストファイルでは型安全性よりもテストのしやすさを優先するため、anyを許容します
+// テストファイルでは型安全性よりもテストのしやすさを優先するため、anyを許容する場合がある
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
-// Vitest から Mock 型をインポート (MockInstance の代わりに Mock を使用)
-import type { Mock, MockInstance } from "vitest";
+// Vitest から MockInstance 型をインポート
+import type { MockInstance } from "vitest";
 
 // テスト対象コンポーネント
 import AnswerInputScreen from "../pages/AnswerInputScreen"; // パスを調整
@@ -17,47 +17,44 @@ import type { ProblemItemProps } from "@/components/quiz/ProblemItem"; // パス
 import type { NotificationToastProps } from "@/components/quiz/NotificationToast"; // パス調整
 import type { ConfirmationDialogProps } from "@/components/common/ConfirmationDialog"; // パス調整
 import type { TimerState, TimerOptions } from "@/hooks/useTimer"; // 型取得のため
-import * as apiService from "@/services/api"; // 型推論用
+import * as apiServiceOriginal from "@/services/api"; // 元のモジュール情報 (型推論用)
+import * as routerOriginal from "react-router-dom"; // 元のモジュール情報 (型推論用)
+import * as timerOriginal from "@/hooks/useTimer"; // 元のモジュール情報 (型推論用)
 
 // ==================================
-// モック設定
+// vi.hoisted によるモック関数定義
 // ==================================
+const mocks = vi.hoisted(() => {
+  // 関数の型シグネチャを定義
+  type FetchSig = typeof apiServiceOriginal.fetchQuizQuestions;
+  type SubmitSig = typeof apiServiceOriginal.submitQuizAnswers;
+  type NavigateFnSig = ReturnType<typeof routerOriginal.useNavigate>;
+  type SearchParamsGetSig = (key: string) => string | null;
+  type BlockerActionSig = () => void;
+  type UseTimerSig = typeof timerOriginal.useTimer;
 
-// --- API Service Mocks ---
-const mockFetchQuizQuestions = vi.fn();
-const mockSubmitQuizAnswers = vi.fn();
-vi.mock("@/services/api", async () => {
-  const actual = await vi.importActual<typeof apiService>("@/services/api");
   return {
-    ...actual,
-    fetchQuizQuestions: mockFetchQuizQuestions,
-    submitQuizAnswers: mockSubmitQuizAnswers,
+    // MockInstance<関数の型全体> を使用
+    mockFetchQuizQuestions: vi.fn() as MockInstance<FetchSig>,
+    mockSubmitQuizAnswers: vi.fn() as MockInstance<SubmitSig>,
+    mockNavigateFn: vi.fn() as MockInstance<NavigateFnSig>,
+    mockSearchParamsGetFn: vi.fn() as MockInstance<SearchParamsGetSig>,
+    mockBlockerProceedFn: vi.fn() as MockInstance<BlockerActionSig>,
+    mockBlockerResetFn: vi.fn() as MockInstance<BlockerActionSig>,
+    mockUseTimer: vi.fn() as MockInstance<UseTimerSig>,
   };
 });
 
-// --- React Router DOM Mocks ---
-const mockNavigate = vi.fn();
-const mockSearchParamsGet = vi.fn();
-const mockBlockerProceed = vi.fn();
-const mockBlockerReset = vi.fn();
+// ==================================
+// モック設定 (State Controllerなど - vi.hoisted の外)
+// ==================================
+// Blocker の型定義で MockInstance を使用
 type Blocker = {
   state: "blocked" | "unblocked" | "proceeding";
-  proceed: Mock;
-  reset: Mock;
+  proceed: MockInstance<() => void>;
+  reset: MockInstance<() => void>;
 };
-let mockReturnedBlocker: Blocker | null = null;
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom");
-  const mockSearchParams = { get: mockSearchParamsGet };
-  return {
-    ...(typeof actual === "object" ? actual : {}),
-    useNavigate: () => mockNavigate,
-    useSearchParams: () => [mockSearchParams, vi.fn()],
-    useBlocker: () => mockReturnedBlocker,
-  };
-});
-
-// --- useTimer Mock ---
+let mockReturnedBlockerValue: Blocker | null = null; // useBlocker が返す値を制御
 const defaultMockTimerState: TimerState = {
   timeRemaining: 300,
   warningLevel: "normal",
@@ -66,17 +63,58 @@ const defaultMockTimerState: TimerState = {
   notification: { show: false, message: "", level: "normal" },
   isTimerRunning: true,
 };
-let currentMockTimerState: TimerState = { ...defaultMockTimerState };
-const mockUseTimer = vi.fn(() => currentMockTimerState);
+let currentMockTimerState: TimerState = { ...defaultMockTimerState }; // useTimer が返す状態を制御
 const setMockTimerState = (newState: Partial<TimerState>) => {
   currentMockTimerState = { ...currentMockTimerState, ...newState };
 };
-vi.mock("@/hooks/useTimer", () => ({ useTimer: mockUseTimer }));
-
-// --- Child Component Mocks ---
+// 子コンポーネントの Props 記録用配列
 const mockProblemItemProps: ProblemItemProps[] = [];
 const mockNotificationToastProps: NotificationToastProps[] = [];
 const mockConfirmationDialogProps: ConfirmationDialogProps[] = [];
+
+// window.confirm スパイの型 (MockInstance を使用)
+let mockConfirmSpy: MockInstance<(message?: string | undefined) => boolean>;
+
+// ==================================
+// vi.mock によるモック化 (vi.hoisted の後)
+// ==================================
+vi.mock("@/services/api", async () => {
+  const actual = await vi.importActual<typeof apiServiceOriginal>(
+    "@/services/api"
+  );
+  return {
+    ...actual,
+    fetchQuizQuestions: mocks.mockFetchQuizQuestions,
+    submitQuizAnswers: mocks.mockSubmitQuizAnswers,
+  };
+});
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof routerOriginal>(
+    "react-router-dom"
+  );
+  const mockSearchParams = { get: mocks.mockSearchParamsGetFn };
+
+  return {
+    ...(typeof actual === "object" ? actual : {}),
+    useNavigate: () => mocks.mockNavigateFn,
+    useSearchParams: () => [mockSearchParams, vi.fn()],
+    useBlocker: () =>
+      mockReturnedBlockerValue
+        ? {
+            ...mockReturnedBlockerValue,
+            proceed: mocks.mockBlockerProceedFn, // 常に最新のモック関数を参照
+            reset: mocks.mockBlockerResetFn, // 常に最新のモック関数を参照
+          }
+        : null,
+  };
+});
+
+vi.mock("@/hooks/useTimer", () => ({
+  useTimer: mocks.mockUseTimer, // hoisted のモックを参照
+}));
+
+// 子コンポーネントのモック (vi.hoisted は不要)
 vi.mock("@/components/quiz/ProblemItem", () => ({
   default: vi.fn((props: ProblemItemProps) => {
     mockProblemItemProps.push(props);
@@ -120,36 +158,44 @@ vi.mock("@/components/common/ConfirmationDialog", () => ({
   }),
 }));
 
-// --- Browser API Mock ---
-// Mock<[引数の型タプル], 戻り値の型> を使用
-let mockConfirmSpy: MockInstance<typeof window.confirm>;
-
 // ==================================
 // テストスイート
 // ==================================
 describe("AnswerInputScreen", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockSearchParamsGet.mockReset();
-    mockReturnedBlocker = null;
+    vi.clearAllMocks(); // すべての vi.fn(), vi.spyOn() をクリア
+
+    // hoisted で作成したモック関数の実装や状態をリセット
+    mocks.mockFetchQuizQuestions.mockReset();
+    mocks.mockSubmitQuizAnswers.mockReset();
+    mocks.mockNavigateFn.mockClear();
+    mocks.mockSearchParamsGetFn.mockReset();
+    mocks.mockBlockerProceedFn.mockClear();
+    mocks.mockBlockerResetFn.mockClear();
+    mocks.mockUseTimer.mockImplementation(() => currentMockTimerState); // state を返すように再設定
+
+    // State Controller のリセット
+    mockReturnedBlockerValue = null;
     currentMockTimerState = { ...defaultMockTimerState };
     mockProblemItemProps.length = 0;
     mockNotificationToastProps.length = 0;
     mockConfirmationDialogProps.length = 0;
-    // window.confirm のスパイを設定 (Mock<...> 型を使用)
-    mockConfirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
+
+    // window.confirm のスパイを設定
+    mockConfirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true); // デフォルト true
   });
 
+  // afterEach を beforeEach の外、describe の直下に移動
   afterEach(() => {
-    // スパイなどを確実に元の状態に戻す
-    vi.restoreAllMocks();
+    vi.restoreAllMocks(); // spyOn を元に戻す
   });
 
   // --- Helper Function for Rendering ---
   const renderAndWaitForInit = async (mockProblems: Problem[] = []) => {
-    mockFetchQuizQuestions.mockResolvedValue({
+    mocks.mockFetchQuizQuestions.mockResolvedValue({
       sessionId: "sid-test",
       questions: mockProblems,
+      timeLimit: 60, // 仮の値、必要なら調整
     });
     render(
       <BrowserRouter>
@@ -157,7 +203,7 @@ describe("AnswerInputScreen", () => {
       </BrowserRouter>
     );
     await waitFor(() => {
-      expect(mockFetchQuizQuestions).toHaveBeenCalled();
+      expect(mocks.mockFetchQuizQuestions).toHaveBeenCalled();
       if (mockProblems.length > 0) {
         expect(mockProblemItemProps.length).toBe(mockProblems.length);
       }
@@ -171,7 +217,7 @@ describe("AnswerInputScreen", () => {
       const expectedTimeLimit = 30;
       const expectedCount = 5;
       const expectedBookSource = "programming_principles";
-      mockSearchParamsGet.mockImplementation((key: string) => {
+      mocks.mockSearchParamsGetFn.mockImplementation((key: string) => {
         if (key === "timeLimit") return expectedTimeLimit.toString();
         if (key === "count") return expectedCount.toString();
         if (key === "bookSource") return expectedBookSource;
@@ -182,12 +228,12 @@ describe("AnswerInputScreen", () => {
 
       await renderAndWaitForInit([]);
 
-      expect(mockFetchQuizQuestions).toHaveBeenCalledWith(
+      expect(mocks.mockFetchQuizQuestions).toHaveBeenCalledWith(
         expectedBookSource,
         expectedCount,
         expectedTimeLimit
       );
-      expect(mockUseTimer).toHaveBeenCalledWith(
+      expect(mocks.mockUseTimer).toHaveBeenCalledWith(
         expectedTotalTime,
         expect.anything()
       );
@@ -196,14 +242,14 @@ describe("AnswerInputScreen", () => {
 
     it("問題取得中にローディング状態が表示される", () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      let resolveFetch: (value: any) => void;
-      mockFetchQuizQuestions.mockImplementation(
+      let _resolveFetch: (value: any) => void;
+      mocks.mockFetchQuizQuestions.mockImplementation(
         () =>
           new Promise((res) => {
-            resolveFetch = res;
+            _resolveFetch = res;
           })
       );
-      mockSearchParamsGet.mockReturnValue("10");
+      mocks.mockSearchParamsGetFn.mockReturnValue("10");
       render(
         <BrowserRouter>
           <AnswerInputScreen />
@@ -224,7 +270,7 @@ describe("AnswerInputScreen", () => {
           ],
           correctAnswer: "a",
           explanation: "Exp 1",
-        },
+        } as Problem, // 型アサーションまたは完全なデータ
         {
           questionId: "q2",
           category: "cat2",
@@ -235,7 +281,7 @@ describe("AnswerInputScreen", () => {
           ],
           correctAnswer: "d",
           explanation: "Exp 2",
-        },
+        } as Problem,
       ];
       const timerDisplayValue = "01:00";
       setMockTimerState({ formattedTime: timerDisplayValue });
@@ -256,8 +302,8 @@ describe("AnswerInputScreen", () => {
 
     it("問題取得失敗時にエラーメッセージが表示される", async () => {
       const errorMessage = "サーバーエラーが発生しました";
-      mockFetchQuizQuestions.mockRejectedValue(new Error(errorMessage));
-      mockSearchParamsGet.mockReturnValue("10");
+      mocks.mockFetchQuizQuestions.mockRejectedValue(new Error(errorMessage));
+      mocks.mockSearchParamsGetFn.mockReturnValue("10");
 
       render(
         <BrowserRouter>
@@ -274,10 +320,11 @@ describe("AnswerInputScreen", () => {
       expect(screen.queryByText(/問題解答/)).not.toBeInTheDocument();
       expect(mockProblemItemProps.length).toBe(0);
     });
-  });
+  }); // describe: 初期化
 
   // --- 機能テスト (問題読み込み成功後) ---
   describe("機能テスト (問題読み込み成功後)", () => {
+    // テスト用の問題データ (describe内でアクセス可能に)
     const mockProblems: Problem[] = [
       {
         questionId: "q1",
@@ -289,7 +336,7 @@ describe("AnswerInputScreen", () => {
         correctAnswer: "a",
         explanation: "",
         category: "catA",
-      },
+      } as Problem,
       {
         questionId: "q2",
         question: "Q2",
@@ -300,18 +347,23 @@ describe("AnswerInputScreen", () => {
         correctAnswer: "c",
         explanation: "",
         category: "catB",
-      },
+      } as Problem,
     ];
     const mockSessionId = "s1";
 
+    // この describe 内のテストはすべて問題読み込み成功を前提とする
     beforeEach(async () => {
-      mockFetchQuizQuestions.mockResolvedValue({
+      mocks.mockFetchQuizQuestions.mockResolvedValue({
         sessionId: mockSessionId,
         questions: mockProblems,
+        timeLimit: 60, // APIレスポンスにも timeLimit を含める
       });
-      mockSearchParamsGet.mockReturnValue("10");
-      setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
-      mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+      mocks.mockSearchParamsGetFn.mockReturnValue("10"); // count=10 を返すように設定
+      setMockTimerState({ timeRemaining: 100, isTimerRunning: true }); // タイマー動作中
+      mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // デフォルト提出成功
+      // confirm Spy はルートの beforeEach で設定済み (true を返す)
+
+      // コンポーネントをレンダリングし、初期化完了を待つ
       render(
         <BrowserRouter>
           <AnswerInputScreen />
@@ -330,7 +382,7 @@ describe("AnswerInputScreen", () => {
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // 再レンダリング
         expect(screen.getByText(expectedFormattedTime)).toBeInTheDocument();
       });
 
@@ -346,7 +398,7 @@ describe("AnswerInputScreen", () => {
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // 再レンダリング
         const timeElement = screen.getByText(expectedFormattedTime);
         expect(timeElement).toHaveClass(expectedColorClass);
       });
@@ -365,7 +417,7 @@ describe("AnswerInputScreen", () => {
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // 再レンダリング
         const toastElement = screen.getByTestId("mock-notification-toast");
         expect(toastElement).toHaveTextContent(notificationMessage);
       });
@@ -376,46 +428,45 @@ describe("AnswerInputScreen", () => {
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // 再レンダリング
 
-        // onTimeUp コールバックを安全に取得
-        const lastCallArgs = mockUseTimer.mock.calls[
-          mockUseTimer.mock.calls.length - 1
-        ] as any[];
+        const lastCallArgs =
+          mocks.mockUseTimer.mock.calls[
+            mocks.mockUseTimer.mock.calls.length - 1
+          ];
         expect(lastCallArgs).toBeDefined();
-        // useTimer は第2引数に options を取ることを想定
         expect(lastCallArgs.length).toBeGreaterThanOrEqual(2);
-
         const optionsArg = lastCallArgs[1] as TimerOptions | undefined;
         const onTimeUpCallback = optionsArg?.onTimeUp;
         expect(onTimeUpCallback).toBeDefined();
         expect(typeof onTimeUpCallback).toBe("function");
 
-        if (onTimeUpCallback) {
-          await onTimeUpCallback();
-        }
+        if (onTimeUpCallback) await onTimeUpCallback(); // 時間切れ発生
 
         await waitFor(() => {
-          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
         });
       });
-    });
+    }); // describe: タイマー
 
     describe("解答の選択 (Answer Selection)", () => {
       it("ProblemItem で選択肢を選ぶと内部状態が更新され、提出データに反映される", async () => {
         const user = userEvent.setup();
         const choiceId1 = "b";
         const choiceId2 = "c";
+        // find と Optional chaining で安全にコールバック呼び出し
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", choiceId1);
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q2")
           ?.onAnswerSelect("q2", choiceId2);
+
         await user.click(screen.getByRole("button", { name: "解答する" }));
+
         await waitFor(() => {
-          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
-          const payload = mockSubmitQuizAnswers.mock
+          expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          const payload = mocks.mockSubmitQuizAnswers.mock
             .calls[0][0] as AnswerPayload;
           expect(
             payload.answers.find((a) => a.questionId === "q1")?.answer
@@ -432,7 +483,7 @@ describe("AnswerInputScreen", () => {
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // 再レンダリング
         const submitButton = screen.getByRole("button", { name: "解答する" });
         expect(submitButton).toBeDisabled();
       });
@@ -440,7 +491,7 @@ describe("AnswerInputScreen", () => {
       it("提出中は解答を選択できない (提出ペイロードに反映されない)", async () => {
         const user = userEvent.setup();
         let resolveSubmit: ((value: { results: [] }) => void) | undefined;
-        mockSubmitQuizAnswers.mockImplementation(
+        mocks.mockSubmitQuizAnswers.mockImplementation(
           () =>
             new Promise((res) => {
               resolveSubmit = res;
@@ -450,31 +501,35 @@ describe("AnswerInputScreen", () => {
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", initialChoiceId);
+
         await user.click(screen.getByRole("button", { name: "解答する" }));
         await screen.findByRole("button", { name: "提出中..." });
+
         const choiceWhileSubmitting = "b";
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", choiceWhileSubmitting);
+
         expect(resolveSubmit).toBeDefined();
         if (resolveSubmit) resolveSubmit({ results: [] });
+
         await waitFor(() => {
-          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
-          const payload = mockSubmitQuizAnswers.mock
+          expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          const payload = mocks.mockSubmitQuizAnswers.mock
             .calls[0][0] as AnswerPayload;
           expect(
             payload.answers.find((a) => a.questionId === "q1")?.answer
           ).toBe(initialChoiceId);
         });
       });
-    });
+    }); // describe: 解答選択
 
     describe("解答の提出 (Submission Process)", () => {
       it("未解答がある状態で提出ボタンを押すと window.confirm が呼ばれる", async () => {
         const user = userEvent.setup();
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
-          ?.onAnswerSelect("q1", "a");
+          ?.onAnswerSelect("q1", "a"); // q1 のみ解答
         await user.click(screen.getByRole("button", { name: "解答する" }));
         expect(mockConfirmSpy).toHaveBeenCalledTimes(1);
         expect(mockConfirmSpy).toHaveBeenCalledWith(
@@ -490,7 +545,7 @@ describe("AnswerInputScreen", () => {
         mockConfirmSpy.mockReturnValueOnce(false); // キャンセル
         await user.click(screen.getByRole("button", { name: "解答する" }));
         expect(mockConfirmSpy).toHaveBeenCalledTimes(1);
-        expect(mockSubmitQuizAnswers).not.toHaveBeenCalled();
+        expect(mocks.mockSubmitQuizAnswers).not.toHaveBeenCalled();
         expect(screen.getByRole("button", { name: "解答する" })).toBeEnabled();
       });
 
@@ -506,8 +561,8 @@ describe("AnswerInputScreen", () => {
           ?.onAnswerSelect("q2", answer2);
         await user.click(screen.getByRole("button", { name: "解答する" }));
         await waitFor(() => {
-          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
-          const payload = mockSubmitQuizAnswers.mock
+          expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          const payload = mocks.mockSubmitQuizAnswers.mock
             .calls[0][0] as AnswerPayload;
           expect(payload.sessionId).toBe(mockSessionId);
           expect(
@@ -522,7 +577,7 @@ describe("AnswerInputScreen", () => {
       it("提出中は解答ボタンが「提出中...」になり無効化される", async () => {
         const user = userEvent.setup();
         let resolveSubmit: ((value: any) => void) | undefined;
-        mockSubmitQuizAnswers.mockImplementation(
+        mocks.mockSubmitQuizAnswers.mockImplementation(
           () =>
             new Promise((res) => {
               resolveSubmit = res;
@@ -543,29 +598,11 @@ describe("AnswerInputScreen", () => {
         const user = userEvent.setup();
         const mockResultsData: AnswersApiResponse = {
           results: [
-            {
-              questionId: "q1",
-              category: "catA",
-              isCorrect: true,
-              userAnswer: "a",
-              correctAnswer: "a",
-              question: "Q1",
-              options: [],
-              explanation: "",
-            },
-            {
-              questionId: "q2",
-              category: "catB",
-              isCorrect: false,
-              userAnswer: "c",
-              correctAnswer: "d",
-              question: "Q2",
-              options: [],
-              explanation: "",
-            },
+            { questionId: "q1", /*...*/ isCorrect: true } as any,
+            { questionId: "q2", /*...*/ isCorrect: false } as any,
           ],
-        };
-        mockSubmitQuizAnswers.mockResolvedValue(mockResultsData);
+        }; // 簡略化
+        mocks.mockSubmitQuizAnswers.mockResolvedValue(mockResultsData);
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
@@ -574,13 +611,13 @@ describe("AnswerInputScreen", () => {
           ?.onAnswerSelect("q2", "c");
         await user.click(screen.getByRole("button", { name: "解答する" }));
         await waitFor(() => {
-          expect(mockNavigate).toHaveBeenCalledWith(
+          expect(mocks.mockNavigateFn).toHaveBeenCalledWith(
             "/result",
             expect.objectContaining({
               state: expect.objectContaining({
                 quizResults: mockResultsData.results,
                 totalQuestions: mockProblems.length,
-                correctQuestions: 1,
+                correctQuestions: 1, // mockResultsData から計算
               }),
             })
           );
@@ -590,13 +627,13 @@ describe("AnswerInputScreen", () => {
       it("解答提出失敗時にエラーメッセージが表示され、ボタンが有効に戻る", async () => {
         const user = userEvent.setup();
         const errorMessage = "提出エラー";
-        mockSubmitQuizAnswers.mockRejectedValue(new Error(errorMessage));
+        mocks.mockSubmitQuizAnswers.mockRejectedValue(new Error(errorMessage));
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
         await user.click(screen.getByRole("button", { name: "解答する" }));
         await screen.findByText(`エラー: ${errorMessage}`);
-        expect(mockNavigate).not.toHaveBeenCalled();
+        expect(mocks.mockNavigateFn).not.toHaveBeenCalled();
         expect(screen.getByRole("button", { name: "解答する" })).toBeEnabled();
       });
 
@@ -607,21 +644,22 @@ describe("AnswerInputScreen", () => {
             <AnswerInputScreen />
           </BrowserRouter>
         );
-        const lastCallArgs = mockUseTimer.mock.calls[
-          mockUseTimer.mock.calls.length - 1
-        ] as any[];
+
+        const lastCallArgs =
+          mocks.mockUseTimer.mock.calls[
+            mocks.mockUseTimer.mock.calls.length - 1
+          ];
         const optionsArg = lastCallArgs[1] as TimerOptions | undefined;
         const onTimeUpCallback = optionsArg?.onTimeUp;
         expect(onTimeUpCallback).toBeDefined();
-        if (onTimeUpCallback) {
-          await onTimeUpCallback();
-        }
+        if (onTimeUpCallback) await onTimeUpCallback();
+
         expect(mockConfirmSpy).not.toHaveBeenCalled();
         await waitFor(() => {
-          expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+          expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
         });
         await waitFor(() => {
-          expect(mockNavigate).toHaveBeenCalledWith(
+          expect(mocks.mockNavigateFn).toHaveBeenCalledWith(
             "/result",
             expect.anything()
           );
@@ -631,7 +669,7 @@ describe("AnswerInputScreen", () => {
       it("提出処理中に再度提出ボタンを押しても二重送信されない", async () => {
         const user = userEvent.setup();
         let resolveSubmit: ((value: any) => void) | undefined;
-        mockSubmitQuizAnswers.mockImplementation(
+        mocks.mockSubmitQuizAnswers.mockImplementation(
           () =>
             new Promise((res) => {
               resolveSubmit = res;
@@ -641,38 +679,38 @@ describe("AnswerInputScreen", () => {
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
         const submitButton = screen.getByRole("button", { name: "解答する" });
-        await user.click(submitButton);
+        await user.click(submitButton); // 1回目
         await screen.findByRole("button", { name: "提出中..." });
-        await user.click(submitButton);
-        expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+        await user.click(submitButton); // 2回目 (無効なはず)
+        expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
         if (resolveSubmit) resolveSubmit({ results: [] });
-        await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
-        expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(mocks.mockNavigateFn).toHaveBeenCalled()); // 遷移を待つ
+        expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1); // 最終的に1回
       });
-    }); // describe('解答の提出')
+    }); // describe: 解答提出
 
     describe("画面離脱防止機能 (Navigation Blocking)", () => {
       it("解答中に useBlocker がブロック状態を返すと確認ダイアログが表示される", async () => {
-        mockReturnedBlocker = {
+        mockReturnedBlockerValue = {
           state: "blocked",
-          proceed: mockBlockerProceed,
-          reset: mockBlockerReset,
+          proceed: mocks.mockBlockerProceedFn,
+          reset: mocks.mockBlockerResetFn,
         };
         render(
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // blocker の変更を反映させるために再レンダリング
         const dialog = await screen.findByTestId("mock-confirmation-dialog");
         expect(dialog).toBeInTheDocument();
       });
 
       it("確認ダイアログで「OK」をクリックすると blocker.proceed が呼ばれる", async () => {
         const user = userEvent.setup();
-        mockReturnedBlocker = {
+        mockReturnedBlockerValue = {
           state: "blocked",
-          proceed: mockBlockerProceed,
-          reset: mockBlockerReset,
+          proceed: mocks.mockBlockerProceedFn,
+          reset: mocks.mockBlockerResetFn,
         };
         render(
           <BrowserRouter>
@@ -681,8 +719,8 @@ describe("AnswerInputScreen", () => {
         );
         const confirmButton = await screen.findByTestId("mock-confirm-button");
         await user.click(confirmButton);
-        expect(mockBlockerProceed).toHaveBeenCalledTimes(1);
-        expect(mockBlockerReset).not.toHaveBeenCalled();
+        expect(mocks.mockBlockerProceedFn).toHaveBeenCalledTimes(1);
+        expect(mocks.mockBlockerResetFn).not.toHaveBeenCalled();
         expect(
           screen.queryByTestId("mock-confirmation-dialog")
         ).not.toBeInTheDocument();
@@ -690,10 +728,10 @@ describe("AnswerInputScreen", () => {
 
       it("確認ダイアログで「キャンセル」をクリックすると blocker.reset が呼ばれる", async () => {
         const user = userEvent.setup();
-        mockReturnedBlocker = {
+        mockReturnedBlockerValue = {
           state: "blocked",
-          proceed: mockBlockerProceed,
-          reset: mockBlockerReset,
+          proceed: mocks.mockBlockerProceedFn,
+          reset: mocks.mockBlockerResetFn,
         };
         render(
           <BrowserRouter>
@@ -702,8 +740,8 @@ describe("AnswerInputScreen", () => {
         );
         const cancelButton = await screen.findByTestId("mock-cancel-button");
         await user.click(cancelButton);
-        expect(mockBlockerReset).toHaveBeenCalledTimes(1);
-        expect(mockBlockerProceed).not.toHaveBeenCalled();
+        expect(mocks.mockBlockerResetFn).toHaveBeenCalledTimes(1);
+        expect(mocks.mockBlockerProceedFn).not.toHaveBeenCalled();
         expect(
           screen.queryByTestId("mock-confirmation-dialog")
         ).not.toBeInTheDocument();
@@ -711,7 +749,7 @@ describe("AnswerInputScreen", () => {
 
       it("時間切れ後はブロッカーが作動せず、確認ダイアログは表示されない", () => {
         setMockTimerState({ timeRemaining: 0, isTimerRunning: false });
-        mockReturnedBlocker = null;
+        mockReturnedBlockerValue = null;
         render(
           <BrowserRouter>
             <AnswerInputScreen />
@@ -725,7 +763,7 @@ describe("AnswerInputScreen", () => {
       it("提出中はブロッカーが作動せず、確認ダイアログは表示されない", async () => {
         const user = userEvent.setup();
         let resolveSubmit: ((value: any) => void) | undefined;
-        mockSubmitQuizAnswers.mockImplementation(
+        mocks.mockSubmitQuizAnswers.mockImplementation(
           () =>
             new Promise((res) => {
               resolveSubmit = res;
@@ -736,12 +774,12 @@ describe("AnswerInputScreen", () => {
           ?.onAnswerSelect("q1", "a");
         await user.click(screen.getByRole("button", { name: "解答する" }));
         await screen.findByRole("button", { name: "提出中..." });
-        mockReturnedBlocker = null;
+        mockReturnedBlockerValue = null;
         render(
           <BrowserRouter>
             <AnswerInputScreen />
           </BrowserRouter>
-        );
+        ); // 再レンダリング
         expect(
           screen.queryByTestId("mock-confirmation-dialog")
         ).not.toBeInTheDocument();
