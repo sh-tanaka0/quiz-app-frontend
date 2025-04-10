@@ -349,7 +349,7 @@ describe("AnswerInputScreen", () => {
         category: "catB",
       } as Problem,
     ];
-    const mockSessionId = "s1";
+    const mockSessionId = "sid-test"; // describe内で定義
 
     // この describe 内のテストはすべて問題読み込み成功を前提とする
     beforeEach(async () => {
@@ -483,7 +483,7 @@ describe("AnswerInputScreen", () => {
           category: "catB",
         } as Problem,
       ];
-      const mockSessionId = "s1"; // describe内で定義
+      const mockSessionId = "sid-test"; // describe内で定義
 
       // この beforeEach で API や searchParams のデフォルトを設定
       beforeEach(() => {
@@ -562,7 +562,7 @@ describe("AnswerInputScreen", () => {
         const initialChoiceId = "a";
 
         // Act: レンダリング
-        await renderAndWaitForInit(mockProblems); 
+        await renderAndWaitForInit(mockProblems);
         // Act: 最初の選択
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
@@ -595,12 +595,60 @@ describe("AnswerInputScreen", () => {
     }); // describe: 解答選択
 
     describe("解答の提出 (Submission Process)", () => {
+      const mockProblems: Problem[] = [
+        {
+          questionId: "q1",
+          question: "Q1",
+          options: [
+            { id: "a", text: "A" },
+            { id: "b", text: "B" },
+          ],
+          correctAnswer: "a",
+          explanation: "",
+          category: "catA",
+        } as Problem,
+        {
+          questionId: "q2",
+          question: "Q2",
+          options: [
+            { id: "c", text: "C" },
+            { id: "d", text: "D" },
+          ],
+          correctAnswer: "c",
+          explanation: "",
+          category: "catB",
+        } as Problem,
+      ];
+      const mockSessionId = "sid-test"; // describe内で定義
+
+      // この beforeEach は API モックの *デフォルトの動作* を設定するだけにする
+      beforeEach(() => {
+        mocks.mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: mockSessionId,
+          questions: mockProblems,
+          timeLimit: 60,
+        });
+        mocks.mockSearchParamsGetFn.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true }); // デフォルトタイマー
+        mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // デフォルト提出成功
+        // confirmSpy はルートの beforeEach で設定済み
+      });
+
       it("未解答がある状態で提出ボタンを押すと window.confirm が呼ばれる", async () => {
         const user = userEvent.setup();
+
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems);
+
+        // Act: q1 のみ解答
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
-          ?.onAnswerSelect("q1", "a"); // q1 のみ解答
+          ?.onAnswerSelect("q1", "a");
+
+        // Act: 提出ボタンをクリック
         await user.click(screen.getByRole("button", { name: "解答する" }));
+
+        // Assert: confirm が呼ばれたことを確認
         expect(mockConfirmSpy).toHaveBeenCalledTimes(1);
         expect(mockConfirmSpy).toHaveBeenCalledWith(
           expect.stringContaining("未解答の問題が 1 問あります")
@@ -609,11 +657,21 @@ describe("AnswerInputScreen", () => {
 
       it("未解答確認ダイアログでキャンセルすると submit API は呼ばれない", async () => {
         const user = userEvent.setup();
+        // Arrange: confirm でキャンセルを返す
+        mockConfirmSpy.mockReturnValueOnce(false);
+
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems);
+
+        // Act: q1 のみ解答
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
-        mockConfirmSpy.mockReturnValueOnce(false); // キャンセル
+
+        // Act: 提出ボタンをクリック
         await user.click(screen.getByRole("button", { name: "解答する" }));
+
+        // Assert
         expect(mockConfirmSpy).toHaveBeenCalledTimes(1);
         expect(mocks.mockSubmitQuizAnswers).not.toHaveBeenCalled();
         expect(screen.getByRole("button", { name: "解答する" })).toBeEnabled();
@@ -623,13 +681,21 @@ describe("AnswerInputScreen", () => {
         const user = userEvent.setup();
         const answer1 = "b";
         const answer2 = "c";
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems);
+
+        // Act: 全問解答
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", answer1);
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q2")
           ?.onAnswerSelect("q2", answer2);
+
+        // Act: 提出
         await user.click(screen.getByRole("button", { name: "解答する" }));
+
+        // Assert
         await waitFor(() => {
           expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
           const payload = mocks.mockSubmitQuizAnswers.mock
@@ -653,14 +719,22 @@ describe("AnswerInputScreen", () => {
               resolveSubmit = res;
             })
         );
+
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems);
+        // Act: 解答して提出開始
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
         await user.click(screen.getByRole("button", { name: "解答する" }));
+
+        // Assert
         const submittingButton = await screen.findByRole("button", {
           name: "提出中...",
         });
         expect(submittingButton).toBeDisabled();
+
+        // Cleanup
         if (resolveSubmit) resolveSubmit({ results: [] });
       });
 
@@ -668,11 +742,39 @@ describe("AnswerInputScreen", () => {
         const user = userEvent.setup();
         const mockResultsData: AnswersApiResponse = {
           results: [
-            { questionId: "q1", /*...*/ isCorrect: true } as any,
-            { questionId: "q2", /*...*/ isCorrect: false } as any,
+            {
+              questionId: "q1",
+              isCorrect: true,
+              explanation: "Exp A",
+              category: "catA",
+              userAnswer: "a",
+              correctAnswer: "a",
+              question: "Question 1?",
+              options: [
+                { id: "a", text: "Option A" },
+                { id: "b", text: "Option B" },
+              ],
+            },
+            {
+              questionId: "q2",
+              isCorrect: false,
+              explanation: "Exp B",
+              category: "catB",
+              userAnswer: "d",
+              correctAnswer: "c",
+              question: "Question 2?",
+              options: [
+                { id: "c", text: "Option C" },
+                { id: "d", text: "Option D" },
+              ],
+            },
           ],
-        }; // 簡略化
+        };
         mocks.mockSubmitQuizAnswers.mockResolvedValue(mockResultsData);
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems);
+
+        // Act: 解答して提出
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
@@ -680,6 +782,8 @@ describe("AnswerInputScreen", () => {
           .find((p) => p.problem.questionId === "q2")
           ?.onAnswerSelect("q2", "c");
         await user.click(screen.getByRole("button", { name: "解答する" }));
+
+        // Assert
         await waitFor(() => {
           expect(mocks.mockNavigateFn).toHaveBeenCalledWith(
             "/result",
@@ -687,43 +791,68 @@ describe("AnswerInputScreen", () => {
               state: expect.objectContaining({
                 quizResults: mockResultsData.results,
                 totalQuestions: mockProblems.length,
-                correctQuestions: 1, // mockResultsData から計算
+                correctQuestions: 1,
               }),
             })
           );
         });
       });
 
-      it("解答提出失敗時にエラーメッセージが表示され、ボタンが有効に戻る", async () => {
+      it("解答提出失敗時にエラーメッセージが表示され、ナビゲーションせずボタンは表示されない", async () => {
         const user = userEvent.setup();
         const errorMessage = "提出エラー";
         mocks.mockSubmitQuizAnswers.mockRejectedValue(new Error(errorMessage));
+
+        // Arrange: レンダリングと初期化
+        // (mockProblems は親 describe の beforeEach で設定されている前提)
+        await renderAndWaitForInit(mockProblems); // it 内でレンダリング
+
+        // Arrange: 何か解答しておく
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
+
+        // Act: 提出ボタンをクリック
+        // この時点ではボタンは存在するはず
         await user.click(screen.getByRole("button", { name: "解答する" }));
-        await screen.findByText(`エラー: ${errorMessage}`);
+
+        // Assert: エラーメッセージが表示されるのを待つ
+        expect(
+          await screen.findByText(`エラー: ${errorMessage}`)
+        ).toBeInTheDocument();
+
+        // Assert: navigate が呼ばれていないことを確認
         expect(mocks.mockNavigateFn).not.toHaveBeenCalled();
-        expect(screen.getByRole("button", { name: "解答する" })).toBeEnabled();
+
+        // Assert: 「解答する」ボタンがもはや存在しないことを確認
+        expect(
+          screen.queryByRole("button", { name: "解答する" })
+        ).not.toBeInTheDocument();
+        // Assert: 「提出中...」ボタンも存在しないことを確認
+        expect(
+          screen.queryByRole("button", { name: "提出中..." })
+        ).not.toBeInTheDocument();
       });
 
       it("時間切れ時に自動提出され、成功すれば結果画面へ navigate する", async () => {
+        // Arrange: 時間切れ状態を設定
         setMockTimerState({ timeRemaining: 1, isTimerRunning: true });
-        render(
-          <BrowserRouter>
-            <AnswerInputScreen />
-          </BrowserRouter>
-        );
+        mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // 提出は成功させる
 
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems); // <-- ★★★ it 内で呼び出す
+
+        // Act: onTimeUp コールバックを取得して呼び出す
         const lastCallArgs =
           mocks.mockUseTimer.mock.calls[
             mocks.mockUseTimer.mock.calls.length - 1
           ];
-        const optionsArg = lastCallArgs[1] as TimerOptions | undefined;
+        const optionsArg = lastCallArgs?.[1] as TimerOptions | undefined;
         const onTimeUpCallback = optionsArg?.onTimeUp;
         expect(onTimeUpCallback).toBeDefined();
         if (onTimeUpCallback) await onTimeUpCallback();
 
+        // Assert
         expect(mockConfirmSpy).not.toHaveBeenCalled();
         await waitFor(() => {
           expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
@@ -745,17 +874,28 @@ describe("AnswerInputScreen", () => {
               resolveSubmit = res;
             })
         );
+
+        // Act: レンダリングと初期化
+        await renderAndWaitForInit(mockProblems); // <-- ★★★ it 内で呼び出す
+
+        // Act: 解答して提出開始
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", "a");
         const submitButton = screen.getByRole("button", { name: "解答する" });
         await user.click(submitButton); // 1回目
         await screen.findByRole("button", { name: "提出中..." });
-        await user.click(submitButton); // 2回目 (無効なはず)
+
+        // Act: 2回目のクリック
+        await user.click(submitButton);
+
+        // Assert
         expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+
+        // Cleanup & Final Assert
         if (resolveSubmit) resolveSubmit({ results: [] });
-        await waitFor(() => expect(mocks.mockNavigateFn).toHaveBeenCalled()); // 遷移を待つ
-        expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1); // 最終的に1回
+        await waitFor(() => expect(mocks.mockNavigateFn).toHaveBeenCalled());
+        expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
       });
     }); // describe: 解答提出
 
