@@ -458,11 +458,54 @@ describe("AnswerInputScreen", () => {
     });
 
     describe("解答の選択 (Answer Selection)", () => {
+      // この describe 内で使う共通の問題データ
+      const mockProblems: Problem[] = [
+        {
+          questionId: "q1",
+          question: "Q1",
+          options: [
+            { id: "a", text: "A" },
+            { id: "b", text: "B" },
+          ],
+          correctAnswer: "a",
+          explanation: "",
+          category: "catA",
+        } as Problem,
+        {
+          questionId: "q2",
+          question: "Q2",
+          options: [
+            { id: "c", text: "C" },
+            { id: "d", text: "D" },
+          ],
+          correctAnswer: "c",
+          explanation: "",
+          category: "catB",
+        } as Problem,
+      ];
+      const mockSessionId = "s1"; // describe内で定義
+
+      // この beforeEach で API や searchParams のデフォルトを設定
+      beforeEach(() => {
+        mocks.mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: mockSessionId,
+          questions: mockProblems, // 上で定義したデータを使用
+          timeLimit: 60,
+        });
+        mocks.mockSearchParamsGetFn.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+        mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+      });
+
       it("ProblemItem で選択肢を選ぶと内部状態が更新され、提出データに反映される", async () => {
         const user = userEvent.setup();
         const choiceId1 = "b";
         const choiceId2 = "c";
-        // find と Optional chaining で安全にコールバック呼び出し
+
+        // Arrange: 特に state を変更する必要はないので、そのままレンダリング
+        await renderAndWaitForInit(mockProblems);
+
+        // Act: find と Optional chaining で安全にコールバック呼び出し
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", choiceId1);
@@ -472,6 +515,7 @@ describe("AnswerInputScreen", () => {
 
         await user.click(screen.getByRole("button", { name: "解答する" }));
 
+        // Assert
         await waitFor(() => {
           expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
           const payload = mocks.mockSubmitQuizAnswers.mock
@@ -485,15 +529,25 @@ describe("AnswerInputScreen", () => {
         });
       });
 
-      it("時間切れ後は解答を選択できない (提出ボタンが無効)", () => {
+      it("時間切れ後は解答を選択できない (提出ボタンが無効)", async () => {
+        // async を追加
+        // Arrange: 時間切れ状態に設定
         setMockTimerState({ timeRemaining: 0, isTimerRunning: false });
-        render(
-          <BrowserRouter>
-            <AnswerInputScreen />
-          </BrowserRouter>
-        ); // 再レンダリング
+
+        // Act: レンダリング
+        await renderAndWaitForInit(mockProblems);
+
+        // Arrange: ProblemItem のコールバックを取得して呼び出してみる (本来は無効のはず)
+        const problem1Props = mockProblemItemProps.find(
+          (p) => p.problem.questionId === "q1"
+        );
+        problem1Props?.onAnswerSelect("q1", "b");
+
+        // Assert: ボタンが無効であることを確認
         const submitButton = screen.getByRole("button", { name: "解答する" });
         expect(submitButton).toBeDisabled();
+        // Assert: 意図せず提出されないこと
+        expect(mocks.mockSubmitQuizAnswers).not.toHaveBeenCalled();
       });
 
       it("提出中は解答を選択できない (提出ペイロードに反映されない)", async () => {
@@ -506,28 +560,36 @@ describe("AnswerInputScreen", () => {
             })
         );
         const initialChoiceId = "a";
+
+        // Act: レンダリング
+        await renderAndWaitForInit(mockProblems); 
+        // Act: 最初の選択
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", initialChoiceId);
 
+        // Act: 提出開始
         await user.click(screen.getByRole("button", { name: "解答する" }));
         await screen.findByRole("button", { name: "提出中..." });
 
+        // Act: 提出中に別の選択を試みる
         const choiceWhileSubmitting = "b";
         mockProblemItemProps
           .find((p) => p.problem.questionId === "q1")
           ?.onAnswerSelect("q1", choiceWhileSubmitting);
 
+        // Act: 提出完了
         expect(resolveSubmit).toBeDefined();
         if (resolveSubmit) resolveSubmit({ results: [] });
 
+        // Assert
         await waitFor(() => {
           expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
           const payload = mocks.mockSubmitQuizAnswers.mock
             .calls[0][0] as AnswerPayload;
           expect(
             payload.answers.find((a) => a.questionId === "q1")?.answer
-          ).toBe(initialChoiceId);
+          ).toBe(initialChoiceId); // 最初の選択が維持されている
         });
       });
     }); // describe: 解答選択
