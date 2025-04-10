@@ -359,34 +359,31 @@ describe("AnswerInputScreen", () => {
         timeLimit: 60, // APIレスポンスにも timeLimit を含める
       });
       mocks.mockSearchParamsGetFn.mockReturnValue("10"); // count=10 を返すように設定
-      setMockTimerState({ timeRemaining: 100, isTimerRunning: true }); // タイマー動作中
-      mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // デフォルト提出成功
+      // タイマーや提出のデフォルト状態はルートの beforeEach でリセットされる
+      mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
       // confirm Spy はルートの beforeEach で設定済み (true を返す)
-
-      // コンポーネントをレンダリングし、初期化完了を待つ
-      render(
-        <BrowserRouter>
-          <AnswerInputScreen />
-        </BrowserRouter>
-      );
-      await waitFor(() =>
-        expect(mockProblemItemProps.length).toBe(mockProblems.length)
-      );
     });
 
     describe("タイマー機能との連携 (Timer Interaction)", () => {
-      it("モックタイマーの残り時間 (formattedTime) が正しく表示される", () => {
+      it("モックタイマーの残り時間 (formattedTime) が正しく表示される", async () => {
         const expectedFormattedTime = "03:45";
         setMockTimerState({ formattedTime: expectedFormattedTime });
-        render(
-          <BrowserRouter>
-            <AnswerInputScreen />
-          </BrowserRouter>
-        ); // 再レンダリング
-        expect(screen.getByText(expectedFormattedTime)).toBeInTheDocument();
+
+        // Act: コンポーネントをレンダリングし、初期化完了を待つ
+        // ここで初めてレンダリングする
+        await renderAndWaitForInit(mockProblems);
+
+        // Assert: 設定したフォーマット済み時間が表示されているか確認
+        // findByText などで非同期に表示されるのを待っても良い
+        expect(
+          await screen.findByText(expectedFormattedTime)
+        ).toBeInTheDocument();
+        // または getByText (同期的に見つかる場合)
+        // expect(screen.getByText(expectedFormattedTime)).toBeInTheDocument();
       });
 
-      it("モックタイマーの警告レベルに応じてタイマー表示要素に色クラスが付与される", () => {
+      it("モックタイマーの警告レベルに応じてタイマー表示要素に色クラスが付与される", async () => {
+        // Arrange
         const expectedFormattedTime = "01:23";
         const expectedColorClass = "text-orange-500";
         setMockTimerState({
@@ -394,16 +391,23 @@ describe("AnswerInputScreen", () => {
           timerColorClass: expectedColorClass,
           formattedTime: expectedFormattedTime,
         });
-        render(
-          <BrowserRouter>
-            <AnswerInputScreen />
-          </BrowserRouter>
-        ); // 再レンダリング
-        const timeElement = screen.getByText(expectedFormattedTime);
+
+        // Act
+        await renderAndWaitForInit(mockProblems);
+
+        // Assert
+        // findByText で要素が見つかるのを待ってからクラスを確認
+        const timeElement = await screen.findByText(expectedFormattedTime);
         expect(timeElement).toHaveClass(expectedColorClass);
+        // アイコンの確認 (オプション)
+        const clockIcon = timeElement.previousElementSibling;
+        if (clockIcon) {
+          expect(clockIcon).toHaveClass(expectedColorClass);
+        }
       });
 
-      it("モックタイマーの通知状態に応じて NotificationToast が表示される", () => {
+      it("モックタイマーの通知状態に応じて NotificationToast が表示される", async () => {
+        // Arrange
         const notificationMessage = "残り時間が10%を切りました！";
         setMockTimerState({
           notification: {
@@ -413,41 +417,45 @@ describe("AnswerInputScreen", () => {
           },
           timerColorClass: "text-red-600",
         });
-        render(
-          <BrowserRouter>
-            <AnswerInputScreen />
-          </BrowserRouter>
-        ); // 再レンダリング
-        const toastElement = screen.getByTestId("mock-notification-toast");
+
+        // Act
+        await renderAndWaitForInit(mockProblems);
+
+        // Assert (findByTestId で非同期に待つ)
+        const toastElement = await screen.findByTestId(
+          "mock-notification-toast"
+        );
         expect(toastElement).toHaveTextContent(notificationMessage);
+        // 他の属性アサーション...
       });
 
       it("時間切れ時に onTimeUp コールバックが呼ばれると解答提出処理がトリガーされる", async () => {
+        // Arrange
         setMockTimerState({ timeRemaining: 1, isTimerRunning: true });
-        render(
-          <BrowserRouter>
-            <AnswerInputScreen />
-          </BrowserRouter>
-        ); // 再レンダリング
+        // submit API の準備
+        mocks.mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
 
+        // Act
+        await renderAndWaitForInit(mockProblems); // レンダリングして onTimeUp を useTimer に渡す
+
+        // onTimeUp を取得して呼び出し
         const lastCallArgs =
           mocks.mockUseTimer.mock.calls[
             mocks.mockUseTimer.mock.calls.length - 1
           ];
-        expect(lastCallArgs).toBeDefined();
-        expect(lastCallArgs.length).toBeGreaterThanOrEqual(2);
-        const optionsArg = lastCallArgs[1] as TimerOptions | undefined;
+        const optionsArg = lastCallArgs?.[1] as TimerOptions | undefined;
         const onTimeUpCallback = optionsArg?.onTimeUp;
         expect(onTimeUpCallback).toBeDefined();
         expect(typeof onTimeUpCallback).toBe("function");
 
         if (onTimeUpCallback) await onTimeUpCallback(); // 時間切れ発生
 
+        // Assert
         await waitFor(() => {
           expect(mocks.mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
         });
       });
-    }); // describe: タイマー
+    });
 
     describe("解答の選択 (Answer Selection)", () => {
       it("ProblemItem で選択肢を選ぶと内部状態が更新され、提出データに反映される", async () => {
