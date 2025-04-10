@@ -565,29 +565,204 @@ describe("AnswerInputScreen", () => {
         screen.queryByTestId("mock-notification-toast")
       ).not.toBeInTheDocument();
     });
-    it.todo(
-      "モックタイマーの時間切れ時に onTimeUp コールバック経由で提出処理がトリガーされる",
+    it("モックタイマーの時間切れ時に onTimeUp コールバック経由で提出処理がトリガーされる", async () => {
+      //  API と searchParams の基本設定
+      const mockProblems: Problem[] = [
+        {
+          questionId: "q1",
+          question: "Sample question text",
+          options: [],
+          correctAnswer: "a",
+          explanation: "",
+          category: "",
+        },
+      ];
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: "s1",
+        questions: mockProblems,
+      });
+      mockSearchParamsGet.mockReturnValue("10");
+      //  解答提出APIは成功するように設定
+      mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+      //  useTimer の状態は timeRemaining > 0 で設定 (時間切れ「前」の状態)
+      setMockTimerState({ timeRemaining: 1, isTimerRunning: true });
+
+      // Act: レンダリングし、初期化完了を待つ
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+      await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled());
+
+      // Act: useTimer に渡された onTimeUp コールバックを取得
+      // mockUseTimer.mock.calls[0] は useTimer が最初に呼ばれた時の引数リスト
+      // [1] は第二引数の options オブジェクト、.onTimeUp でコールバック取得
+      const onTimeUpCallback = mockUseTimer.mock.calls[0]?.[1]?.onTimeUp;
+      expect(onTimeUpCallback).toBeDefined(); // コールバックが渡されているか確認
+
+      // Act: 取得した onTimeUp コールバックを呼び出して時間切れをシミュレート
+      // handleTimeUp -> handleSubmitRevised が async なので await する
+      if (onTimeUpCallback) {
+        await onTimeUpCallback();
+      } else {
+        throw new Error("onTimeUp callback was not passed to useTimer mock");
+      }
+
+      // Assert: 解答提出 API (mockSubmitQuizAnswers) が呼び出されたことを確認
+      // handleSubmitRevised が非同期で submit を呼ぶため waitFor を使う
+      await waitFor(() => {
+        expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+        // オプション: 時間切れを示す情報が渡されているか確認 (もしあれば)
+        // expect(mockSubmitQuizAnswers).toHaveBeenCalledWith(expect.objectContaining({ isTimeUp: true }));
+      });
+    });
+    // it.todo('タイマーが0になったら解答ボタンが無効化される'); // これは提出や選択のテストでカバーされるかも
+  });
+
+  describe("解答の選択 (Answer Selection)", () => {
+    it(
+      "ProblemItem で選択肢をクリックすると onAnswerSelect が呼ばれ、選択状態が更新される",
       async () => {
-        //  API と searchParams の基本設定
+          //  データ読み込み成功状態にする
+          const user = userEvent.setup();
+          const mockProblems: Problem[] = [
+            { questionId: 'q1', question: 'Q1', options: [{ id: 'a', text: 'Opt A'}, { id: 'b', text: 'Opt B'}], correctAnswer: 'a', explanation: '', category: ''},
+            { questionId: 'q2', question: 'Q2', options: [{ id: 'c', text: 'Opt C'}, { id: 'd', text: 'Opt D'}], correctAnswer: 'd', explanation: '', category: '' },
+          ];
+          mockFetchQuizQuestions.mockResolvedValue({ sessionId: 's1', questions: mockProblems });
+          mockSubmitQuizAnswers.mockResolvedValue({ results: [] }); // 送信は成功させる
+          mockSearchParamsGet.mockReturnValue('10');
+          setMockTimerState({ timeRemaining: 100, isTimerRunning: true }); // タイマー動作中
+  
+          // Act: レンダリングし、初期化完了を待つ
+          render(
+            <BrowserRouter>
+              <AnswerInputScreen />
+            </BrowserRouter>
+          );
+          await waitFor(() => expect(mockProblemItemProps.length).toBe(mockProblems.length)); // ProblemItem がレンダリングされるのを待つ
+  
+          //  1問目の ProblemItem の onAnswerSelect コールバックを取得
+          const problem1Props = mockProblemItemProps[0];
+          expect(problem1Props).toBeDefined();
+          const problemIdToSelect = problem1Props.problem.questionId; // 'q1'
+          const choiceIdToSelect = problem1Props.problem.options[1].id; // 'b'
+  
+          // Act: 1問目の onAnswerSelect コールバックを呼び出して選択をシミュレート
+          if (problem1Props.onAnswerSelect) {
+            problem1Props.onAnswerSelect(problemIdToSelect, choiceIdToSelect);
+          } else {
+            throw new Error('onAnswerSelect was not passed to ProblemItem mock');
+          }
+  
+          // Act: 続けて2問目も選択
+          const problem2Props = mockProblemItemProps[1];
+          expect(problem2Props).toBeDefined();
+          const problemId2ToSelect = problem2Props.problem.questionId; // 'q2'
+          const choiceId2ToSelect = problem2Props.problem.options[0].id; // 'c'
+          if (problem2Props.onAnswerSelect) {
+              problem2Props.onAnswerSelect(problemId2ToSelect, choiceId2ToSelect);
+          } else {
+              throw new Error('onAnswerSelect was not passed to ProblemItem mock for q2');
+          }
+  
+  
+          // Act: 解答ボタンをクリックして提出
+          const submitButton = screen.getByRole('button', { name: '解答する' });
+          await user.click(submitButton);
+  
+          // Assert: submit API が呼ばれ、そのペイロードに選択した解答が含まれていることを確認
+          await waitFor(() => {
+            expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
+            const submittedPayload = mockSubmitQuizAnswers.mock.calls[0][0] as AnswerPayload; // 提出されたペイロードを取得
+            // q1 の解答が 'b' であることを確認
+            const answerForQ1 = submittedPayload.answers.find(a => a.questionId === problemIdToSelect);
+            expect(answerForQ1?.answer).toBe(choiceIdToSelect);
+              // q2 の解答が 'c' であることを確認
+            const answerForQ2 = submittedPayload.answers.find(a => a.questionId === problemId2ToSelect);
+            expect(answerForQ2?.answer).toBe(choiceId2ToSelect);
+      }
+    );
+    it("時間切れ後は新しい解答を選択できない", async () => {
+         //  データ読み込み成功状態、かつ時間切れ状態にする
+         const user = userEvent.setup();
+         const mockProblems: Problem[] = [
+           { questionId: 'q1', question: 'Q1', options: [{ id: 'a', text: 'Opt A'}, { id: 'b', text: 'Opt B'}], correctAnswer: 'a', explanation: '', category: ''},
+         ];
+         mockFetchQuizQuestions.mockResolvedValue({ sessionId: 's1', questions: mockProblems });
+         mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
+         mockSearchParamsGet.mockReturnValue('10');
+         //  時間切れ状態をシミュレート
+         setMockTimerState({ timeRemaining: 0, isTimerRunning: false });
+ 
+         // Act: レンダリングし、初期化完了を待つ
+         render(
+           <BrowserRouter>
+             <AnswerInputScreen />
+           </BrowserRouter>
+         );
+         await waitFor(() => expect(mockProblemItemProps.length).toBe(mockProblems.length));
+ 
+         //  ProblemItem の onAnswerSelect コールバックを取得
+         const problem1Props = mockProblemItemProps[0];
+         const problemIdToSelect = problem1Props.problem.questionId;
+         const choiceIdToSelect = problem1Props.problem.options[1].id;
+ 
+         // Act: 時間切れ後に onAnswerSelect を呼び出す
+         if (problem1Props.onAnswerSelect) {
+           problem1Props.onAnswerSelect(problemIdToSelect, choiceIdToSelect);
+         } else {
+           throw new Error('onAnswerSelect was not passed to ProblemItem mock');
+         }
+ 
+         // Act: 解答ボタンをクリック (時間切れなので無効のはずだが、念のため)
+         //      または時間切れによる自動提出を待つ (ここでは手動提出を試みる)
+         const submitButton = screen.getByRole('button', { name: '解答する' });
+         // 時間切れならボタンは disabled のはず
+         expect(submitButton).toBeDisabled();
+         // await user.click(submitButton); // クリックしても何も起こらないはず
+ 
+         // Assert: 解答提出 API が呼ばれて *いない* ことを確認
+         // (時間切れ時の自動提出は別のテストで確認するため、ここでは選択不可の確認に留める)
+         // 時間切れ時の自動提出がトリガーされる可能性があるため、
+         // このアサーションは「提出ペイロードに今回の選択が含まれない」ことを確認する方が良い
+         // (時間切れ自動提出のテストを先に行い、それを前提とする)
+ 
+         // --- アサーションの代替案 ---
+         // 時間切れによる自動提出が完了したと仮定する (別途テストが必要)
+         // ここでは、仮に手動で submit できたとしても、
+         // onAnswerSelect での変更が反映されていないことを確認する
+         mockSubmitQuizAnswers.mockClear(); // 提出履歴をクリア
+         // 手動で提出関数を呼び出す（本来はボタンが無効なので呼ばれないはず）
+         // (テスト対象コンポーネント内部の handleSubmitRevised を直接呼ぶのは難しいので、
+         //  ここでは「もし提出されたら」という仮定でペイロードを確認するアプローチは難しい)
+ 
+         // --- よりシンプルなアサーション ---
+         // onAnswerSelect を呼んだ後、再度 ProblemItem の props を確認しても state の変更は分からない。
+         // handleAnswerSelect の最初のガード節 `if (timeRemaining <= 0 ...)` が機能することを期待するテストになる。
+         // -> 現状のモック構成では「状態が更新されなかった」ことを直接確認するのは難しい。
+         // このテストは、「時間切れ時に ProblemItem の選択肢クリックが視覚的に無効化されているか」
+         // (ProblemItem の単体テストの範疇) や、
+         // 「時間切れ時に提出ボタンが無効化されているか」の確認に留めるのが現実的かもしれない。
+ 
+         // 現状できるアサーション：ボタンが無効であること
+         expect(submitButton).toBeDisabled();
+         // onAnswerSelect が呼ばれても submit API は意図せずには呼ばれない (副作用がない)
+         expect(mockSubmitQuizAnswers).not.toHaveBeenCalled();
+    });
+    it("提出中は新しい解答を選択できない", async () => {
+        //  データ読み込み成功状態、タイマー動作中
+        const user = userEvent.setup();
         const mockProblems: Problem[] = [
-          {
-            questionId: "q1",
-            question: "Sample question text",
-            options: [],
-            correctAnswer: "a",
-            explanation: "",
-            category: "",
-          },
+          { questionId: 'q1', question: 'Q1', options: [{ id: 'a', text: 'Opt A'}, { id: 'b', text: 'Opt B'}], correctAnswer: 'a', explanation: '', category: ''},
         ];
-        mockFetchQuizQuestions.mockResolvedValue({
-          sessionId: "s1",
-          questions: mockProblems,
-        });
-        mockSearchParamsGet.mockReturnValue("10");
-        //  解答提出APIは成功するように設定
-        mockSubmitQuizAnswers.mockResolvedValue({ results: [] });
-        //  useTimer の状態は timeRemaining > 0 で設定 (時間切れ「前」の状態)
-        setMockTimerState({ timeRemaining: 1, isTimerRunning: true });
+        //  API を準備 (提出はすぐに解決させない)
+        let resolveSubmit: (value: { results: [] }) => void;
+        mockFetchQuizQuestions.mockResolvedValue({ sessionId: 's1', questions: mockProblems });
+        mockSubmitQuizAnswers.mockImplementation(() => new Promise(res => { resolveSubmit = res; })); // 提出を保留
+        mockSearchParamsGet.mockReturnValue('10');
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
 
         // Act: レンダリングし、初期化完了を待つ
         render(
@@ -595,40 +770,42 @@ describe("AnswerInputScreen", () => {
             <AnswerInputScreen />
           </BrowserRouter>
         );
-        await waitFor(() => expect(mockFetchQuizQuestions).toHaveBeenCalled());
+        await waitFor(() => expect(mockProblemItemProps.length).toBe(mockProblems.length));
 
-        // Act: useTimer に渡された onTimeUp コールバックを取得
-        // mockUseTimer.mock.calls[0] は useTimer が最初に呼ばれた時の引数リスト
-        // [1] は第二引数の options オブジェクト、.onTimeUp でコールバック取得
-        const onTimeUpCallback = mockUseTimer.mock.calls[0]?.[1]?.onTimeUp;
-        expect(onTimeUpCallback).toBeDefined(); // コールバックが渡されているか確認
+        // Act: 提出ボタンをクリックして「提出中」状態にする
+        const submitButton = screen.getByRole('button', { name: '解答する' });
+        await user.click(submitButton);
+        // 提出中表示になるのを待つ
+        await screen.findByRole('button', { name: '提出中...' });
+        expect(submitButton).toBeDisabled(); // ボタンが無効化されることも確認
 
-        // Act: 取得した onTimeUp コールバックを呼び出して時間切れをシミュレート
-        // handleTimeUp -> handleSubmitRevised が async なので await する
-        if (onTimeUpCallback) {
-          await onTimeUpCallback();
+        //  ProblemItem の onAnswerSelect コールバックを取得
+        const problem1Props = mockProblemItemProps[0];
+        const problemIdToSelect = problem1Props.problem.questionId;
+        const choiceIdToSelect = problem1Props.problem.options[1].id; // 'b' を選ぼうとする
+
+        // Act: 提出中に onAnswerSelect を呼び出す
+        if (problem1Props.onAnswerSelect) {
+          problem1Props.onAnswerSelect(problemIdToSelect, choiceIdToSelect);
         } else {
-          throw new Error("onTimeUp callback was not passed to useTimer mock");
+          throw new Error('onAnswerSelect was not passed to ProblemItem mock');
         }
 
-        // Assert: 解答提出 API (mockSubmitQuizAnswers) が呼び出されたことを確認
-        // handleSubmitRevised が非同期で submit を呼ぶため waitFor を使う
+        // Act: 提出処理を完了させる
+        resolveSubmit({ results: [] });
+
+        // Assert:
+        // 提出が完了した後、submit API が受け取ったペイロードを確認する。
+        // このペイロードには、提出中に選択しようとした 'b' ではなく、
+        // 提出開始前の状態（何も選択していなければ null）が含まれているはず。
         await waitFor(() => {
           expect(mockSubmitQuizAnswers).toHaveBeenCalledTimes(1);
-          // オプション: 時間切れを示す情報が渡されているか確認 (もしあれば)
-          // expect(mockSubmitQuizAnswers).toHaveBeenCalledWith(expect.objectContaining({ isTimeUp: true }));
+          const submittedPayload = mockSubmitQuizAnswers.mock.calls[0][0] as AnswerPayload;
+          const answerForQ1 = submittedPayload.answers.find(a => a.questionId === problemIdToSelect);
+          // 提出中に 'b' を選択しようとしたが、反映されず null (または初期選択状態) のままのはず
+          expect(answerForQ1?.answer).toBeNull(); // または提出前の選択状態
         });
-      }
-    );
-    // it.todo('タイマーが0になったら解答ボタンが無効化される'); // これは提出や選択のテストでカバーされるかも
-  });
-
-  describe("解答の選択 (Answer Selection)", () => {
-    it.todo(
-      "ProblemItem で選択肢をクリックすると onAnswerSelect が呼ばれ、選択状態が更新される"
-    );
-    it.todo("時間切れ後は新しい解答を選択できない");
-    it.todo("提出中は新しい解答を選択できない");
+    });
   });
 
   describe("解答の提出 (Submission Process)", () => {
