@@ -1378,14 +1378,190 @@ describe("AnswerInputScreen", () => {
     });
 
     describe("画面離脱防止機能 (Navigation Blocking)", () => {
-      it.todo(
-        "解答中に離脱しようとすると useBlocker (モック) が作動し、確認ダイアログが表示される"
-      );
-      it.todo("確認ダイアログで「OK」を押すと blocker.proceed が呼ばれる");
-      it.todo(
-        "確認ダイアログで「キャンセル」を押すと blocker.reset が呼ばれる"
-      );
-      it.todo("時間切れ後や提出中はブロッカーが作動しない");
+      it("解答中に離脱しようとすると useBlocker (モック) が作動し、確認ダイアログが表示される", async () => {
+        // 初期化成功、タイマー動作中の状態
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            /* ... */
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+
+        // useBlocker がブロック状態オブジェクトを返すように設定
+        mockReturnedBlocker = {
+          state: "blocked", // ブロックされている状態
+          proceed: mockBlockerProceed,
+          reset: mockBlockerReset,
+        };
+
+        // Act: コンポーネントをレンダリング
+        // (useBlocker はレンダリング後に状態が変わり、useEffect でダイアログ表示 state が更新される想定)
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+
+        // Assert: ConfirmationDialog が表示されるのを待つ
+        const dialog = await screen.findByTestId("mock-confirmation-dialog");
+        expect(dialog).toBeInTheDocument();
+
+        // Assert: ConfirmationDialog に正しい props が渡されているか確認 (オプション)
+        const lastDialogProps =
+          mockConfirmationDialogProps[mockConfirmationDialogProps.length - 1];
+        expect(lastDialogProps.show).toBe(true);
+        expect(lastDialogProps.message).toContain("解答中にページを離れると"); // メッセージ内容も確認
+      });
+
+      it("確認ダイアログで「OK」を押すと blocker.proceed が呼ばれる", async () => {
+        // ダイアログが表示される状態 (前のテストと同様)
+        const user = userEvent.setup();
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            /* ... */
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+        mockReturnedBlocker = {
+          state: "blocked",
+          proceed: mockBlockerProceed,
+          reset: mockBlockerReset,
+        };
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+
+        // Act: ダイアログが表示されるのを待ち、「OK」ボタンをクリック
+        const confirmButton = await screen.findByTestId("mock-confirm-button");
+        await user.click(confirmButton);
+
+        // Assert: blocker.proceed (モック) が呼ばれたことを確認
+        expect(mockBlockerProceed).toHaveBeenCalledTimes(1);
+        // Assert: blocker.reset (モック) は呼ばれていないことを確認
+        expect(mockBlockerReset).not.toHaveBeenCalled();
+        // Assert: ダイアログが非表示になることを確認 (オプション)
+        expect(
+          screen.queryByTestId("mock-confirmation-dialog")
+        ).not.toBeInTheDocument();
+      });
+      it("確認ダイアログで「キャンセル」を押すと blocker.reset が呼ばれる", async () => {
+        // ダイアログが表示される状態 (前のテストと同様)
+        const user = userEvent.setup();
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            /* ... */
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true });
+        mockReturnedBlocker = {
+          state: "blocked",
+          proceed: mockBlockerProceed,
+          reset: mockBlockerReset,
+        };
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+
+        // Act: ダイアログが表示されるのを待ち、「キャンセル」ボタンをクリック
+        const cancelButton = await screen.findByTestId("mock-cancel-button");
+        await user.click(cancelButton);
+
+        // Assert: blocker.reset (モック) が呼ばれたことを確認
+        expect(mockBlockerReset).toHaveBeenCalledTimes(1);
+        // Assert: blocker.proceed (モック) は呼ばれていないことを確認
+        expect(mockBlockerProceed).not.toHaveBeenCalled();
+        // Assert: ダイアログが非表示になることを確認 (オプション)
+        expect(
+          screen.queryByTestId("mock-confirmation-dialog")
+        ).not.toBeInTheDocument();
+      });
+      it("時間切れ後や提出中はブロッカーが作動しない", async () => {
+        // 初期化成功、時間切れ状態
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            /* ... */
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 0, isTimerRunning: false }); // 時間切れ
+        // useBlocker は null を返すように設定 (beforeEach のデフォルト)
+        mockReturnedBlocker = null;
+
+        // Act: レンダリング
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        // (非同期処理は特にないので waitFor は不要な場合が多い)
+
+        // Assert: 確認ダイアログが表示されていないことを確認
+        expect(
+          screen.queryByTestId("mock-confirmation-dialog")
+        ).not.toBeInTheDocument();
+      });
+
+      it("提出中はブロッカーが作動せず、確認ダイアログは表示されない", async () => {
+        // 提出中状態を作る
+        const user = userEvent.setup();
+        let resolveSubmit: (value: { results: [] }) => void;
+        mockSubmitQuizAnswers.mockImplementation(
+          () =>
+            new Promise((res) => {
+              resolveSubmit = res;
+            })
+        );
+        mockFetchQuizQuestions.mockResolvedValue({
+          sessionId: "s1",
+          questions: [
+            {
+              questionId: "q1",
+              /*...*/ options: [],
+              correctAnswer: "a",
+              explanation: "",
+              category: "",
+            },
+          ],
+        });
+        mockSearchParamsGet.mockReturnValue("10");
+        setMockTimerState({ timeRemaining: 100, isTimerRunning: true }); // タイマーは動作中
+        // useBlocker は null を返すように設定 (beforeEach のデフォルト)
+        mockReturnedBlocker = null;
+
+        render(
+          <BrowserRouter>
+            <AnswerInputScreen />
+          </BrowserRouter>
+        );
+        await waitFor(() => expect(mockProblemItemProps.length).toBe(1));
+        mockProblemItemProps[0]?.onAnswerSelect("q1", "a"); // 解答
+
+        // Act: 提出ボタンをクリックして提出中状態にする
+        const submitButton = screen.getByRole("button", { name: "解答する" });
+        await user.click(submitButton);
+        await screen.findByRole("button", { name: "提出中..." }); // 提出中になるのを待つ
+
+        // Assert: 確認ダイアログが表示されていないことを確認
+        expect(
+          screen.queryByTestId("mock-confirmation-dialog")
+        ).not.toBeInTheDocument();
+
+        // クリーンアップ
+        resolveSubmit({ results: [] });
+      });
     });
   });
 });
