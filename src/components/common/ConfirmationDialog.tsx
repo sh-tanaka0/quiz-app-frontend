@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "../ui/button";
 
-interface ConfirmationDialogProps {
+export interface ConfirmationDialogProps {
   show: boolean;
   message: string;
   onConfirm: () => void;

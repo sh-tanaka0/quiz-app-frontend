@@ -3,7 +3,7 @@ import React from "react";
 import { Clock } from "lucide-react";
 import { NotificationLevel } from "@/types/quiz"; // パスを調整
 
-interface NotificationToastProps {
+export interface NotificationToastProps {
   message: string;
   level: NotificationLevel;
   colorClass: string; // getTimerColorの結果を受け取る

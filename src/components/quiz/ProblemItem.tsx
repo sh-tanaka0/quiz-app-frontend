@@ -2,7 +2,7 @@
 import React from "react";
 import { Problem } from "@/types/quiz"; // パスを調整
 
-interface ProblemItemProps {
+export interface ProblemItemProps {
   problem: Problem;
   index: number;
   selectedAnswer: string | null;

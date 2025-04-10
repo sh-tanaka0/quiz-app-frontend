@@ -19,7 +19,7 @@ export interface TimerState {
 }
 
 // フックのオプション
-interface TimerOptions {
+export interface TimerOptions {
   onTimeUp?: () => void; // 時間切れ時に実行するコールバック関数
 }
 
