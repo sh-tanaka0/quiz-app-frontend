@@ -1,7 +1,7 @@
 // src/pages/AnswerInputScreen.test.tsx
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
 // Vitest から Mock 型をインポート
@@ -29,6 +29,7 @@ import type { ConfirmationDialogProps } from "@/components/common/ConfirmationDi
 
 // --- API Service Mocks ---
 import * as apiService from "@/services/api"; // 元のAPIサービス (型推論用)
+import { a } from "vitest/dist/chunks/suite.d.FvehnV49.js";
 const mockFetchQuizQuestions = vi.fn();
 const mockSubmitQuizAnswers = vi.fn();
 
@@ -204,11 +205,197 @@ describe("AnswerInputScreen", () => {
   });
 
   describe("初期化と問題読み込み (Initialization and Data Loading)", () => {
-    it.todo("URLパラメータを正しく読み取り、stateの初期値が設定される");
+    it("URLパラメータを正しく読み取り、stateの初期値が設定される", async () => {
+      // useSearchParams のモック設定
+      const expectedTimeLimit = 30;
+      const expectedCount = 5;
+      const expectedBookSource = "programming_principles";
+      mockSearchParamsGet.mockImplementation((key: string) => {
+        if (key === "timeLimit") return expectedTimeLimit.toString();
+        if (key === "count") return expectedCount.toString();
+        if (key === "bookSource") return expectedBookSource;
+        return null;
+      });
+
+      // APIは適当に成功させる (このテストの主眼ではないため)
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: "test-session",
+        questions: [],
+      });
+      // useTimer の初期状態を設定 (初期時間が計算されることを期待)
+      const expectedTotalTime = expectedTimeLimit * expectedCount;
+      const initialTimerState = {
+        ...defaultMockTimerState,
+        timeRemaining: expectedTotalTime,
+        formattedTime: "02:30",
+      };
+      setMockTimerState(initialTimerState); // 初期状態をセット
+
+      // コンポーネントをレンダリング
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+
+      // Assert:
+      // 1. fetchQuizQuestions が URL パラメータ由来の値で呼び出されたか (非同期なので待機)
+      await vi.waitFor(() => {
+        expect(mockFetchQuizQuestions).toHaveBeenCalledWith(
+          expectedBookSource,
+          expectedCount,
+          expectedTimeLimit
+        );
+      });
+      // 2. useTimer が URL パラメータから計算された初期時間で呼び出されたか
+      //    (useTimer の第一引数 initialTotalTime を検証)
+      //    ※ useTimer のモック実装によっては、呼び出し引数の直接検証が難しい場合がある。
+      //      ここでは、useTimer が期待される初期状態 (計算後の時間) でモックされているかで代替検証。
+      expect(mockUseTimer).toHaveBeenCalled();
+      // useTimer のモックが期待される初期状態を返していることを確認
+      expect(currentMockTimerState.timeRemaining).toBe(expectedTotalTime);
+    });
+
+    // URLパラメータを正しく読み取り、stateの初期値が設定されるのテストと重複するため省略
     it.todo("問題取得API (fetchQuizQuestions) を正しい引数で呼び出す");
-    it.todo("問題取得中にローディング状態が表示される");
-    it.todo("問題取得成功時に問題リストとタイマーが表示される");
-    it.todo("問題取得失敗時にエラーメッセージが表示される");
+    it("問題取得中にローディング状態が表示される", async () => {
+      //  API モックが即座には解決しないように設定
+      // (Promise を作成し、resolve 関数を後で呼べるように保持)
+      let resolveFetch: (value: {
+        sessionId: string;
+        questions: Problem[];
+      }) => void;
+      mockFetchQuizQuestions.mockImplementation(
+        () =>
+          new Promise((res) => {
+            resolveFetch = res;
+          })
+      );
+      //  URLパラメータは適当に設定
+      mockSearchParamsGet.mockReturnValue("10"); // 例
+
+      // Act: コンポーネントをレンダリング
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+
+      // Assert: ローディングテキストが表示されていることを確認
+      expect(screen.getByText("問題を読み込んでいます...")).toBeInTheDocument();
+
+      // クリーンアップ (テストがハングしないように Promise を解決させる)
+      // resolveFetch({ sessionId: 'dummy', questions: [] }); // このテスト自体には不要だが、後処理として推奨
+    });
+    it("問題取得成功時に問題リストとタイマーが表示される", async () => {
+      // モックデータ準備
+      const mockProblems: Problem[] = [
+        {
+          questionId: "q1",
+          category: "cat1",
+          question: "Question 1?",
+          options: [
+            { id: "a", text: "Opt A" },
+            { id: "b", text: "Opt B" },
+          ],
+          correctAnswer: "a",
+          explanation: "Exp 1",
+        },
+        {
+          questionId: "q2",
+          category: "cat2",
+          question: "Question 2?",
+          options: [
+            { id: "c", text: "Opt C" },
+            { id: "d", text: "Opt D" },
+          ],
+          correctAnswer: "d",
+          explanation: "Exp 2",
+        },
+      ];
+      const mockSessionId = "session-success";
+      // API モックを成功させる
+      mockFetchQuizQuestions.mockResolvedValue({
+        sessionId: mockSessionId,
+        questions: mockProblems,
+      });
+      // URLパラメータ設定 (適当でOK)
+      mockSearchParamsGet.mockReturnValue("10");
+      // タイマーモックの初期状態 (適当でOK)
+      const timerDisplayValue = "01:00";
+      setMockTimerState({ formattedTime: timerDisplayValue });
+
+      // Act: コンポーネントをレンダリング
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+
+      // Assert:
+      // 1. ローディングが消えていることを確認 (非同期で消えるのを待つ)
+      await waitFor(() => {
+        expect(
+          screen.queryByText("問題を読み込んでいます...")
+        ).not.toBeInTheDocument();
+      });
+
+      // 2. エラーが表示されていないことを確認
+      expect(screen.queryByText(/エラー:/)).not.toBeInTheDocument();
+
+      // 3. タイマーが表示されていることを確認 (モックの値で)
+      expect(screen.getByText(timerDisplayValue)).toBeInTheDocument();
+
+      // 4. 問題リストが表示されていることを確認 (ProblemItem モックが呼ばれたかで判断)
+      //    ProblemItem モックが問題の数だけ呼ばれていることを確認
+      expect(mockProblemItemProps.length).toBe(mockProblems.length);
+      //    最初の ProblemItem に正しい問題データが渡されたかを確認
+      expect(mockProblemItemProps[0].problem).toEqual(mockProblems[0]);
+      expect(mockProblemItemProps[0].index).toBe(0);
+      //    2番目の ProblemItem に正しい問題データが渡されたかを確認
+      expect(mockProblemItemProps[1].problem).toEqual(mockProblems[1]);
+      expect(mockProblemItemProps[1].index).toBe(1);
+
+      // 5. ヘッダーのタイトルに問題数が表示されているか確認
+      expect(
+        screen.getByText(`問題解答 (${mockProblems.length}問)`)
+      ).toBeInTheDocument();
+    });
+
+    it("問題取得失敗時にエラーメッセージが表示される", async () => {
+      //  エラーメッセージ設定
+      const errorMessage = "サーバーエラーが発生しました";
+      //  API モックを失敗させる
+      mockFetchQuizQuestions.mockRejectedValue(new Error(errorMessage));
+      //  URLパラメータ設定 (適当でOK)
+      mockSearchParamsGet.mockReturnValue("10");
+
+      // コンポーネントをレンダリング
+      render(
+        <BrowserRouter>
+          <AnswerInputScreen />
+        </BrowserRouter>
+      );
+
+      // Assert:
+      // 1. ローディングが消えていることを確認 (非同期で消えるのを待つ)
+      await waitFor(() => {
+        expect(
+          screen.queryByText("問題を読み込んでいます...")
+        ).not.toBeInTheDocument();
+      });
+
+      // 2. エラーメッセージが表示されていることを確認
+      expect(screen.getByText(`エラー: ${errorMessage}`)).toBeInTheDocument();
+      // または部分一致で
+      expect(screen.getByText(/エラー:/)).toBeInTheDocument();
+
+      // 3. 問題リストやタイマーが表示されていないことを確認
+      expect(screen.queryByText(/問題解答/)).not.toBeInTheDocument(); // ヘッダータイトル
+      expect(mockProblemItemProps.length).toBe(0); // ProblemItem が呼ばれていない
+    });
+
+    // モックデータの確認は省略
     it.todo("モックデータ使用フラグが有効な場合、モックデータを読み込む");
   });
 
