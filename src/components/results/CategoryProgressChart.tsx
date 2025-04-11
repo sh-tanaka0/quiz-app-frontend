@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { CategoryProgressData, CustomTooltipProps } from "@/types/quiz";
 
-interface CategoryProgressChartProps {
+export interface CategoryProgressChartProps {
   categoryData: CategoryProgressData[];
 }
 

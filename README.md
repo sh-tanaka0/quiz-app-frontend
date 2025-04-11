@@ -1,54 +1,142 @@
-# React + TypeScript + Vite
+# React + TypeScript + Vite プロジェクト
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+このプロジェクトは、React、TypeScript、Vite を使用して構築されたモダンな Web アプリケーションです。以下にプロジェクトの目的、使用技術、実行方法、テスト戦略について詳しく説明します。
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## プロジェクトの目的
 
-## Expanding the ESLint configuration
+このプロジェクトは、ユーザーインターフェースを効率的に構築するためのテンプレートとして機能します。以下のような特徴を持っています：
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **高速な開発環境**: Vite を使用した HMR（Hot Module Replacement）により、即時のフィードバックを得られます。
+- **型安全性**: TypeScript を採用し、型安全な開発を実現します。
+- **UI コンポーネント**: Radix UI や Tailwind CSS を活用した再利用可能なコンポーネントを提供します。
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+---
+
+## 使用技術
+
+- **フロントエンドフレームワーク**: React 18
+- **ビルドツール**: Vite
+- **型定義**: TypeScript
+- **スタイリング**: Tailwind CSS
+- **UI ライブラリ**: Radix UI
+- **データ取得**: Axios
+- **グラフ描画**: Recharts
+- **ユーティリティ**: clsx, tailwind-merge
+- **テスト**: Vitest, Testing Library, Happy DOM
+
+---
+
+## 実行方法
+
+### 1. 必要な環境
+
+- Node.js 16 以上
+- npm または yarn
+
+### 2. インストール
+
+以下のコマンドを実行して依存関係をインストールします。
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 3. 開発サーバーの起動
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+開発環境を起動するには、以下を実行します。
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+```bash
+npm run dev
 ```
+
+### 4. ビルド
+
+本番環境用にビルドするには、以下を実行します。
+
+```bash
+npm run build
+```
+
+### 5. テスト
+
+テストを実行するには、以下を実行します。
+
+```bash
+npm run test
+```
+
+テストを監視モードで実行する場合は、以下を使用します。
+
+```bash
+npm run test:watch
+```
+
+---
+
+## テスト戦略
+
+このプロジェクトでは、以下のテスト戦略を採用しています。
+
+### 使用ツール
+
+- **Vitest**: 高速なテストランナー
+- **Testing Library**: DOM 操作のテストを簡潔に記述
+- **Happy DOM**: 軽量な DOM エミュレーター
+
+### テストの知見
+
+1. **`vi.hoisted` の使い方**  
+   テスト間で共有するモックや変数を定義する際に`vi.hoisted`を活用しています。これにより、テストの可読性と再利用性が向上します。
+
+2. **Happy DOM の採用理由**  
+   JSDOM よりも軽量で高速な Happy DOM を採用しました。これにより、テストの実行速度が向上しました。
+
+3. **非同期処理の待ち方**  
+   非同期処理をテストする際は、`waitFor`を使用して DOM の状態が期待通りになるまで待機します。
+
+   ```ts
+   import { render, screen, waitFor } from "@testing-library/react";
+
+   test("非同期データの表示", async () => {
+     render(<MyComponent />);
+     await waitFor(() =>
+       expect(screen.getByText("データ読み込み完了")).toBeInTheDocument()
+     );
+   });
+   ```
+
+4. **要素特定の方針**  
+   テスト対象の要素を特定する際は、`getByRole`や`getByLabelText`などのアクセシビリティに配慮したセレクタを優先的に使用しています。
+
+---
+
+## ディレクトリ構成
+
+以下は、プロジェクトの主要なディレクトリ構成です。
+
+```
+react-app/
+├── src/
+│   ├── components/    # 再利用可能なReactコンポーネント
+│   ├── pages/         # ページコンポーネント
+│   ├── hooks/         # カスタムフック
+│   ├── utils/         # ユーティリティ関数
+│   ├── styles/        # グローバルスタイル
+│   └── tests/         # テストコード
+├── public/            # 静的ファイル
+├── package.json       # プロジェクト設定
+└── vite.config.ts     # Vite設定
+```
+
+---
+
+## 注意事項
+
+- **ESLint 設定**: 型認識ルールを有効にするため、`tsconfig.json`のパスを適切に設定してください。
+- **テストカバレッジ**: `npm run coverage`でテストカバレッジを生成できます。
+
+---
+
+この README がプロジェクトの理解と開発効率向上の一助となれば幸いです。
