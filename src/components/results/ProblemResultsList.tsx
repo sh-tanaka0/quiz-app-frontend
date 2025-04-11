@@ -1,7 +1,7 @@
 import { QuizResult } from "@/types/quiz";
 import { ProblemResultItem } from "./ProblemResultItem";
 
-interface ProblemResultsListProps {
+export interface ProblemResultsListProps {
   problems: QuizResult[];
   selectedCategory: string | null;
   openExplanationId: string | null;

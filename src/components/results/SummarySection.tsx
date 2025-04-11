@@ -1,7 +1,7 @@
 import { Target, Check, Percent } from "lucide-react";
 import { SummaryData } from "@/types/quiz";
 
-interface SummarySectionProps {
+export interface SummarySectionProps {
   data: SummaryData;
 }
 
