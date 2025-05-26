@@ -60,12 +60,13 @@ export const CategoryProgressChart = ({
           <XAxis
             dataKey="category"
             axisLine={{ stroke: "#d1d5db" }}
-            tickLine={false}
-            tick={{ fontSize: 11, fill: "#4b5563" }}
+            tick={{ fontSize: 10, fill: "#4b5563", fontWeight: 500 }}
             interval={0}
-            angle={-45}
+            angle={-35}
             textAnchor="end"
-            dy={15}
+            dy={10}
+            dx={3} // X軸のラベルの位置調整
+            // tickLine={false} // X軸の目盛り線を非表示にする場合はコメントアウト
           />
           <YAxis
             axisLine={false}
