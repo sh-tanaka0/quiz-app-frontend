@@ -94,7 +94,7 @@ const ProblemSelectionScreen = () => {
         <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm mb-8">
           <CardHeader>
             <CardTitle className="text-2xl text-center flex items-center justify-center">
-              クイズ設定
+              問題設定
             </CardTitle>
           </CardHeader>
           <CardContent className="max-w-4xl mx-auto">
