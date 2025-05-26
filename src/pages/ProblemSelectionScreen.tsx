@@ -229,7 +229,7 @@ const ProblemSelectionScreen = () => {
                 ) : (
                   <div className="flex items-center justify-center">
                     <Zap className="w-7 h-7 mr-3" />
-                    クイズを開始する
+                    問題を開始する
                     <span className="ml-2 text-sm font-normal opacity-80">
                       ({problemCount}問 / 約{estimatedTime}分)
                     </span>
