@@ -7,8 +7,9 @@ import {
 
 // Axiosインスタンスを作成 (ベースURLなどを設定すると便利)
 const apiClient = axios.create({
-  baseURL: "http://localhost:8000", // APIのベースパス (環境変数などから取得推奨)
+  baseURL: import.meta.env.VITE_API_ENDPOINT, // 環境変数からAPIのベースURLを取得
   timeout: 10000, // タイムアウト設定 (10秒)
+  headers: { "x-api-key": import.meta.env.VITE_API_KEY || "" }, // APIキーをヘッダーに追加
 });
 
 /**

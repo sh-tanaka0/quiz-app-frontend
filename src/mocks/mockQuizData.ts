@@ -7,9 +7,10 @@ export const mockQuizData: QuestionsApiResponse = {
   questions: [
     // --- 問題 1 (リファクタリング) ---
     {
-      id: "MOCK001",
+      questionId: "MOCK001",
       category: "リファクタリング",
-      text: "コードの重複を削減するためのリファクタリング手法として最も適切なものはどれですか？",
+      question:
+        "コードの重複を削減するためのリファクタリング手法として最も適切なものはどれですか？",
       options: [
         { id: "A", text: "コピー&ペーストを多用する" },
         { id: "B", text: "共通の処理を関数やメソッドに抽出する" },
@@ -25,9 +26,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 2 (エラーハンドリング) ---
     {
-      id: "MOCK002",
+      questionId: "MOCK002",
       category: "エラーハンドリング",
-      text: "JavaScriptでのエラーハンドリングについて、最も適切な方法はどれですか？",
+      question:
+        "JavaScriptでのエラーハンドリングについて、最も適切な方法はどれですか？",
       options: [
         { id: "A", text: "エラーを常に無視する" },
         { id: "B", text: "コンソールにエラーメッセージを出力するだけ" },
@@ -46,9 +48,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 3 (オブジェクト指向) ---
     {
-      id: "MOCK003",
+      questionId: "MOCK003",
       category: "オブジェクト指向",
-      text: "オブジェクト指向プログラミングの依存性の逆転 (Dependency Inversion) について正しい説明はどれですか？",
+      question:
+        "オブジェクト指向プログラミングの依存性の逆転 (Dependency Inversion) について正しい説明はどれですか？",
       options: [
         { id: "A", text: "下位モジュールに高レベルモジュールを依存させる" },
         {
@@ -64,9 +67,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 4 (コード可読性) ---
     {
-      id: "MOCK004",
+      questionId: "MOCK004",
       category: "コード可読性",
-      text: "変数名を明確にするためには、どのような命名規則が推奨されますか？",
+      question:
+        "変数名を明確にするためには、どのような命名規則が推奨されますか？",
       options: [
         { id: "A", text: "できるだけ短い名前を使う" },
         { id: "B", text: "意味が明確に伝わる具体的な名前を使う" },
@@ -79,9 +83,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 5 (変数命名) ---
     {
-      id: "MOCK005",
+      questionId: "MOCK005",
       category: "変数命名",
-      text: "一時的に使用するループカウンタ変数として、一般的に使われる名前はどれですか？",
+      question:
+        "一時的に使用するループカウンタ変数として、一般的に使われる名前はどれですか？",
       options: [
         { id: "A", text: "counterValue" },
         { id: "B", text: "loopIndexNumber" },
@@ -94,9 +99,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 6 (バージョン管理) ---
     {
-      id: "MOCK006",
+      questionId: "MOCK006",
       category: "バージョン管理",
-      text: "分散型バージョン管理システムとして広く使われているツールはどれですか？",
+      question:
+        "分散型バージョン管理システムとして広く使われているツールはどれですか？",
       options: [
         { id: "A", text: "Subversion (SVN)" },
         { id: "B", text: "CVS" },
@@ -109,9 +115,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 7 (テスト) ---
     {
-      id: "MOCK007",
+      questionId: "MOCK007",
       category: "テスト",
-      text: "ソフトウェアテストにおいて、コードの内部構造を考慮せず、入力と出力のみに着目してテストケースを作成する手法は何と呼ばれますか？",
+      question:
+        "ソフトウェアテストにおいて、コードの内部構造を考慮せず、入力と出力のみに着目してテストケースを作成する手法は何と呼ばれますか？",
       options: [
         { id: "A", text: "ホワイトボックステスト" },
         { id: "B", text: "ブラックボックステスト" },
@@ -124,9 +131,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 8 (アルゴリズム) ---
     {
-      id: "MOCK008",
+      questionId: "MOCK008",
       category: "アルゴリズム",
-      text: "データ構造の一つである「スタック (Stack)」の基本的な特徴を表す用語はどれですか？",
+      question:
+        "データ構造の一つである「スタック (Stack)」の基本的な特徴を表す用語はどれですか？",
       options: [
         { id: "A", text: "FIFO (First-In, First-Out)" },
         { id: "B", text: "LIFO (Last-In, First-Out)" },
@@ -139,9 +147,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 9 (データベース) ---
     {
-      id: "MOCK009",
+      questionId: "MOCK009",
       category: "データベース",
-      text: "リレーショナルデータベースにおいて、テーブル間の関連付けを定義し、データの整合性を保つために使用される制約はどれですか？",
+      question:
+        "リレーショナルデータベースにおいて、テーブル間の関連付けを定義し、データの整合性を保つために使用される制約はどれですか？",
       options: [
         { id: "A", text: "主キー制約 (Primary Key)" },
         { id: "B", text: "外部キー制約 (Foreign Key)" },
@@ -154,9 +163,10 @@ export const mockQuizData: QuestionsApiResponse = {
     },
     // --- 問題 10 (セキュリティ) ---
     {
-      id: "MOCK010",
+      questionId: "MOCK010",
       category: "セキュリティ",
-      text: "Webアプリケーションの脆弱性の一つで、ユーザーからの入力を適切に処理せずにSQL文を組み立てることで、データベースを不正に操作される攻撃手法は何ですか？",
+      question:
+        "Webアプリケーションの脆弱性の一つで、ユーザーからの入力を適切に処理せずにSQL文を組み立てることで、データベースを不正に操作される攻撃手法は何ですか？",
       options: [
         { id: "A", text: "クロスサイトスクリプティング (XSS)" },
         { id: "B", text: "クロスサイトリクエストフォージェリ (CSRF)" },

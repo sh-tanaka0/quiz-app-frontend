@@ -34,9 +34,7 @@ if (typeof window !== "undefined" && !window.PointerEvent) {
 // Element プロトタイプに必要なメソッドを追加 (存在しない場合)
 if (typeof Element !== "undefined") {
   if (!Element.prototype.hasPointerCapture) {
-    Element.prototype.hasPointerCapture = function (
-      pointerId: number
-    ): boolean {
+    Element.prototype.hasPointerCapture = function (): boolean {
       // console.log('Mock hasPointerCapture called', pointerId);
       // 実際のキャプチャ状態を管理するのは複雑なため、テストでは常に false を返すなど、
       // Radix UI がエラーを起こさない最低限の動作を模倣します。
@@ -44,15 +42,13 @@ if (typeof Element !== "undefined") {
     };
   }
   if (!Element.prototype.setPointerCapture) {
-    Element.prototype.setPointerCapture = function (pointerId: number): void {
+    Element.prototype.setPointerCapture = function (): void {
       // console.log('Mock setPointerCapture called', pointerId);
       // 特に処理は不要
     };
   }
   if (!Element.prototype.releasePointerCapture) {
-    Element.prototype.releasePointerCapture = function (
-      pointerId: number
-    ): void {
+    Element.prototype.releasePointerCapture = function (): void {
       // console.log('Mock releasePointerCapture called', pointerId);
       // 特に処理は不要
     };
